@@ -72,17 +72,18 @@ local struct Clusters {
 }
 function Clusters.metamethods.__for(self, body)
 	return quote
+		var self = self.run
 		var c0: uint32 = self.info[0].cluster
 		var i0 = 0
 		for i = 0, self.len do
 			var c = self.info[i].cluster
 			if c ~= c0 then
-				[ body(i0, i - i0, c0) ]
+				[ body(i0, `i - i0, c0) ]
 				c0 = c
 				i0 = i
 			end
 		end
-		[ body(i0, self.len - i0, c0) ]
+		[ body(i0, `self.len - i0, c0) ]
 	end
 end
 
@@ -125,8 +126,7 @@ local get_ligature_carets = macro(function(
 end)
 
 terra GlyphRun:pos_x(i: int)
-	check(i >= 0)
-	check(i <= self.len)
+	check(i >= 0 and i <= self.len)
 	return iif(i > 0, self.pos[i-1].x_advance / 64, 0)
 end
 
@@ -150,8 +150,7 @@ terra GlyphRun:_add_cursors(
 	var grapheme_breaks = alloc_grapheme_breaks(str_len)
 	var lang = nil --not used in current libunibreak impl.
 	set_graphemebreaks_utf32(str, str_len, lang, grapheme_breaks)
-	var grapheme_count =
-		count_graphemes(grapheme_breaks, cluster, cluster_len)
+	var grapheme_count = count_graphemes(grapheme_breaks, cluster, cluster_len)
 	if grapheme_count <= 1 then return end
 
 	--the cluster is made of multiple graphemes, which can be the
@@ -204,7 +203,6 @@ end
 
 --[==[
 
---	self.trailing_space = trailing_space
 --	rtl: bool,
 --	trailing_space: bool,
 
@@ -221,83 +219,90 @@ end
 
 ]==]
 
-terra GlyphRun:compute_cursors()
+terra GlyphRun:compute_cursors(
+	--closure environment
+	str: &uint32,
+	str_len: int,
+	trailing_space: bool
+)
 
-	var cursor_offsets = new(int16, str_len + 1) --in logical order
-	var cursor_xs = new(float, len + 1) --in logical order
-	for i = 0, len+1 do
-		cursor_offsets[i] = -1 --invalid offset, fixed later
+	self.cursor_offsets = new(int16, str_len + 1) --in logical order
+	self.cursor_xs = new(float, str_len + 1) --in logical order
+	for i = 0, str_len + 1 do
+		self.cursor_offsets[i] = -1 --invalid offset, fixed later
 	end
-	self.cursor_offsets = cursor_offsets --0..text_len
-	self.cursor_xs = cursor_xs --0..text_len
 
 	var grapheme_breaks: &int8 --allocated on demand for multi-codepoint clusters
 
-	if rtl then
+	if self.rtl then
 		--add last logical (first visual), after-the-text cursor
-		cursor_offsets[len] = len
-		cursor_xs[len] = 0
-		var i: int --index in glyph_info
+		self.cursor_offsets[str_len] = str_len
+		self.cursor_xs[str_len] = 0
+		var i: int = -1 --index in glyph_info
 		var n: int --glyph count
 		var c: int --cluster
 		var cn: int --cluster len
 		var cx: float --cluster x
-		c = len
-		for i1, n1, c1 in Clusters{self} do
-			cx = pos_x(i1)
-			if i then
-				add_cursors(i, n, c, cn, cx)
+		c = str_len
+		for i1, n1, c1 in Clusters{run = self} do
+			cx = self:pos_x(i1)
+			if i ~= -1 then
+				self:_add_cursors(i, n, c, cn, cx, str, str_len)
 			end
 			var cn1 = c - c1
 			i, n, c, cn = i1, n1, c1, cn1
 		end
-		if i then
-			cx = ax
-			add_cursors(i, n, c, cn, cx)
+		if i ~= -1 then
+			cx = self.advance_x
+			self:_add_cursors(i, n, c, cn, cx, str, str_len)
 		end
 	else
-		var i: int --index in glyph_info
+		var i: int = -1 --index in glyph_info
 		var n: int --glyph count
-		var c: int --cluster
+		var c: int = -1 --cluster
 		var cx: float --cluster x
-		for i1, n1, c1 in rle_runs(glyph_info, glyph_count, get_cluster) do
-			if c then
+		for i1, n1, c1 in Clusters{self} do
+			if c ~= -1 then
 				var cn = c1 - c
-				add_cursors(i, n, c, cn, cx)
+				self:_add_cursors(i, n, c, cn, cx, str, str_len)
 			end
-			var cx1 = pos_x(i1)
+			var cx1 = self:pos_x(i1)
 			i, n, c, cx = i1, n1, c1, cx1
 		end
-		if i then
-			var cn = len - c
-			add_cursors(i, n, c, cn, cx)
+		if i ~= -1 then
+			var cn = str_len - c
+			self:_add_cursors(i, n, c, cn, cx, str, str_len)
 		end
 		--add last logical (last visual), after-the-text cursor
-		cursor_offsets[len] = len
-		cursor_xs[len] = ax
+		self.cursor_offsets[str_len] = str_len
+		self.cursor_xs[str_len] = self.advance_x
 	end
 
 	--add cursor offsets for all codepoints which are missing one.
-	if grapheme_breaks then --there are clusters with multiple codepoints.
-		var c, x --cluster, cluster x.
-		for i = 0, len do
-			if cursor_offsets[i] == -1 then
-				cursor_offsets[i] = c
-				cursor_xs[i] = x
+	if grapheme_breaks ~= nil then --there are clusters with multiple codepoints.
+		var c: int --cluster
+		var x: float --cluster x
+		for i = 0, str_len + 1 do
+			if self.cursor_offsets[i] == -1 then
+				self.cursor_offsets[i] = c
+				self.cursor_xs[i] = x
 			else
-				c = cursor_offsets[i]
-				x = cursor_xs[i]
+				c = self.cursor_offsets[i]
+				x = self.cursor_xs[i]
 			end
 		end
 	end
 
 	--compute `wrap_advance_x` by removing the advance of the trailing space.
-	var wx = ax
+	var wx = self.advance_x
 	if trailing_space then
-		var i = rtl and 0 or glyph_count-1
-		assert(glyph_info[i].cluster == len-1)
-		wx = wx - (pos_x(i+1) - pos_x(i))
+		var i = iif(self.rtl, 0, self.len-1)
+		check(self.info[i].cluster == str_len-1)
+		wx = wx - (self:pos_x(i+1) - self:pos_x(i))
 	end
+	self.wrap_advance_x = wx
+
+	self.trailing_space = trailing_space --for wrapping
 end
 
 --[==[
