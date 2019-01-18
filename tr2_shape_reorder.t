@@ -9,7 +9,7 @@
 -- in visual order. Following left's `next` member eventually gets us to
 -- `right`. The right seg's `next_vis` member is undefined!
 
-setfenv(1, require'tr2_types')
+setfenv(1, require'tr2_env')
 
 local struct Range {
 	left: &Seg;
@@ -23,8 +23,8 @@ local range_freelist = global(freelist(Range))
 -- Merges range with previous range and returns the previous range.
 local terra merge_range_with_prev(range: &Range)
 	var prev = range.prev
-	check(prev ~= nil)
-	check(prev.bidi_level < range.bidi_level)
+	assert(prev ~= nil)
+	assert(prev.bidi_level < range.bidi_level)
 
 	var left: &Range
 	var right: &Range
@@ -100,7 +100,7 @@ local terra reorder_segs(seg: &Seg)
 
 		seg = next_seg
 	end
-	check(range ~= nil)
+	assert(range ~= nil)
 	while range.prev ~= nil do
 		range = merge_range_with_prev(range)
 	end

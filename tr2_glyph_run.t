@@ -1,10 +1,10 @@
 
 --Shaping a single word into an array of glyphs.
 
-setfenv(1, require'tr2_types')
+setfenv(1, require'tr2_env')
 
 terra GlyphRun:shape(
-	str: &uint32,
+	str: &codepoint,
 	str_len: int,
 	font: &Font,
 	font_size: float,
@@ -51,13 +51,6 @@ terra GlyphRun:shape(
 		self.pos[i].x_advance = ax
 	end
 	self.advance_x = [float](ax) / 64 --for positioning in horizontal flow
-
-	--for lru cache
-	self.mem_size =
-		sizeof(GlyphRun)
-		+ (sizeof(hb_glyph_info_t) + sizeof(hb_glyph_position_t)) * self.len
-		+ (sizeof(int16) + sizeof(float)) * (str_len + 1) --cursors
-
 end
 
 function GlyphRun:free()
@@ -73,7 +66,7 @@ local struct Clusters {
 function Clusters.metamethods.__for(self, body)
 	return quote
 		var self = self.run
-		var c0: uint32 = self.info[0].cluster
+		var c0: codepoint = self.info[0].cluster
 		var i0 = 0
 		for i = 0, self.len do
 			var c = self.info[i].cluster
@@ -104,7 +97,7 @@ local terra next_grapheme(grapheme_breaks: &int8, i: int, len: int)
 		i = i + 1
 	end
 	i = i + 1
-	check(i < len)
+	assert(i < len)
 	return i
 end
 
@@ -126,7 +119,7 @@ local get_ligature_carets = macro(function(
 end)
 
 terra GlyphRun:pos_x(i: int)
-	check(i >= 0 and i <= self.len)
+	assert(i >= 0 and i <= self.len)
 	return iif(i > 0, self.pos[i-1].x_advance / 64, 0)
 end
 
@@ -137,7 +130,7 @@ terra GlyphRun:_add_cursors(
 	cluster_len: int,
 	cluster_x: float,
 	--closure environment
-	str: &uint32,
+	str: &codepoint,
 	str_len: int
 )
 	self.cursor_offsets[cluster] = cluster
@@ -221,7 +214,7 @@ end
 
 terra GlyphRun:compute_cursors(
 	--closure environment
-	str: &uint32,
+	str: &codepoint,
 	str_len: int,
 	trailing_space: bool
 )
@@ -297,7 +290,7 @@ terra GlyphRun:compute_cursors(
 	var wx = self.advance_x
 	if trailing_space then
 		var i = iif(self.rtl, 0, self.len-1)
-		check(self.info[i].cluster == str_len-1)
+		assert(self.info[i].cluster == str_len-1)
 		wx = wx - (self:pos_x(i+1) - self:pos_x(i))
 	end
 	self.wrap_advance_x = wx
@@ -305,9 +298,8 @@ terra GlyphRun:compute_cursors(
 	self.trailing_space = trailing_space --for wrapping
 end
 
---[==[
 terra glyph_run(
-	str: &uint32,
+	str: &codepoint,
 	str_offset: int,
 	len: int,
 	trailing_space: bool,
@@ -320,11 +312,19 @@ terra glyph_run(
 )
 	--if not font:ref() then return end
 
-	--[[
-	--compute cache key for this run.
-	var text = ffi.string(str + str_offset, 4 * len)
-	var lang_id = tonumber(lang) or false
-	var key = font.tuple(text, font_size, rtl, script, lang_id)
+	--set up a cache key for this run.
+	var key = GlyphRunCacheKey {
+		font = font;
+		text = str + str_offset;
+		text_len = len;
+		font_size = font_size;
+		rtl = rtl;
+		script = script;
+		lang = lang;
+	}
+
+	--local p = VLS(GlyphRunCacheKey, len)
+	--GlyphRunCacheKey.text = p
 
 	--get the shaped run from cache or shape it and cache it.
 	var glyph_run = self.glyph_runs:get(key)
@@ -336,10 +336,7 @@ terra glyph_run(
 		)
 		self.glyph_runs:put(key, glyph_run)
 	end
-	]]
 
 	--font:unref()
 	return glyph_run
 end
-
-]==]

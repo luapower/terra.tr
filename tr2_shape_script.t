@@ -2,12 +2,9 @@
 --Unicode UAX#24 algorithm for detecting the script property of text runs.
 --Written by Cosmin Apreutesei. Public Domain.
 
-setfenv(1, require'low'.C)
-local glue = require'glue'
-local phf = require'phf'
-include'hb.h'
+setfenv(1, require'tr2_env')
 
-local terra is_combining_mark(funcs: &hb_unicode_funcs_t, c: uint32)
+local terra is_combining_mark(funcs: &hb_unicode_funcs_t, c: codepoint)
 	var cat = hb_unicode_general_category(funcs, c)
 	return
 		   cat == HB_UNICODE_GENERAL_CATEGORY_NON_SPACING_MARK
@@ -44,8 +41,8 @@ local pairs_table = {
   0x301a, 0x301b
 }
 local pairs_array = constant(terralib.new(int32[#pairs_table], pairs_table))
-local pair_index = phf(glue.index(pairs_table), uint32, int8)
-local terra pair(c: uint32): {bool, int, bool}
+local pair_index = phf(index(pairs_table), codepoint, int8)
+local terra pair(c: codepoint): {bool, int, bool}
 	var i = pair_index(c)
 	if i == 0 then
 		return false, 0, false
@@ -55,16 +52,15 @@ local terra pair(c: uint32): {bool, int, bool}
 	return true, pairs_array[i-1], open
 end
 
+local stack = global(arr(codepoint))
+
 --fills a buffer with the Script property for each char in a utf32 buffer.
 --uses UAX#24 Section 5.1 and 5.2 to resolve chars with implicit scripts.
-local stack = global(stack(uint32))
-local terra detect_scripts(s: &uint32, len: int, outbuf: &uint32)
+local terra detect_scripts(s: &codepoint, len: int, outbuf: &codepoint)
 	var unicode_funcs = hb_unicode_funcs_get_default()
 	var script = HB_SCRIPT_COMMON
 	var base_char_i = 0 --index of base character in combining sequence
-	if stack.data == nil then
-		stack:alloc(128)
-	end
+	stack:clear()
 	for i = 0, len do
 		var c = s[i]
 		if is_combining_mark(unicode_funcs, c) then --Section 5.2
@@ -87,9 +83,9 @@ local terra detect_scripts(s: &uint32, len: int, outbuf: &uint32)
 						stack:push(script)
 						stack:push(pair)
 					else --restore the enclosing script
-						for i = stack.len, 0, -2 do
-							if stack.data[i] == pair then --pair opened here
-								for i = stack.len, i, -2 do
+						for i = stack.len-1, -1, -2 do
+							if stack(i) == pair then --pair opened here
+								for i = stack.len-1, i-1, -2 do
 									stack:pop()
 									script = stack:pop()
 								end
@@ -108,9 +104,9 @@ local terra detect_scripts(s: &uint32, len: int, outbuf: &uint32)
 						end
 					end
 					--resolve unresolved scripts of open pairs too.
-					for i = 0, stack.len, 2 do
-						if stack.data[i] == HB_SCRIPT_COMMON then
-							stack.data[i] = sc
+					for i = 1, stack.len, 2 do
+						if stack(i) == HB_SCRIPT_COMMON then
+							stack:set(i, sc)
 						end
 					end
 				end

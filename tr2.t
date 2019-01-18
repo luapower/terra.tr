@@ -1,5 +1,5 @@
 
-setfenv(1, require'tr2_types')
+setfenv(1, require'tr2_env')
 
 local detect_scripts = require'tr2_shape_script'
 local lang_for_script = require'tr2_shape_lang'
