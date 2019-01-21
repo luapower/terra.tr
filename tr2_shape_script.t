@@ -56,7 +56,7 @@ local stack = global(arr(codepoint))
 
 --fills a buffer with the Script property for each char in a utf32 buffer.
 --uses UAX#24 Section 5.1 and 5.2 to resolve chars with implicit scripts.
-local terra detect_scripts(s: &codepoint, len: int, outbuf: &codepoint)
+local terra detect_scripts(s: &codepoint, len: int, outbuf: &hb_script_t)
 	var unicode_funcs = hb_unicode_funcs_get_default()
 	var script = HB_SCRIPT_COMMON
 	var base_char_i = 0 --index of base character in combining sequence

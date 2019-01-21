@@ -1,44 +1,56 @@
 
---Shaping a single word into an array of glyphs.
+--Shaping a single word into an array of glyphs called a glyph run.
 
 setfenv(1, require'tr2_env')
+require'tr2_font'
 
-terra GlyphRun:shape(
-	str: &codepoint,
-	str_len: int,
-	font: &Font,
-	font_size: float,
-	script: hb_script_t,
-	lang: hb_language_t,
-	features: &hb_feature_t,
-	num_features: int,
-	rtl: bool
-)
-	--if not font:ref() then return end
+--interface with the LRU cache
+
+terra GlyphRun:__hash32()
+	var h = hash32(self + GlyphRun_key_offset, GlyphRun_key_size, 0)
+	return hash32(self.text, self.text_len, h)
+end
+
+terra GlyphRun:__equal(other: &GlyphRun)
+	return memcmp(self + GlyphRun_key_offset, other + GlyphRun_key_offset, GlyphRun_key_size) == 0
+		and memcmp(self.text, other.text, self.text_len) == 0
+end
+
+terra GlyphRun:__memsize()
+	return sizeof(GlyphRun)
+		+ sizeof(codepoint) * self.text_len
+		+ (sizeof(cursor_offset_t) + sizeof(cursor_x_t)) * (self.text_len + 1)
+		+ (sizeof(hb_glyph_info_t) + sizeof(hb_glyph_position_t)) * self.len
+end
+
+terra GlyphRun:free()
+	free(self.cursor_xs)
+	free(self.cursor_offsets)
+	hb_buffer_destroy(self.hb_buf)
+	self.font:unref()
+	fill(self)
+end
+
+terra GlyphRun:shape()
+	if not self.font:ref() then return false end
 	--font:setsize(font_size)
 
-	var hb_dir = iif(rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR)
-	var hb_buf = hb_buffer_create()
-	hb_buffer_set_cluster_level(hb_buf,
+	var hb_dir = iif(self.rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR)
+	self.hb_buf = hb_buffer_create()
+	hb_buffer_set_cluster_level(self.hb_buf,
 		--HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS
 		HB_BUFFER_CLUSTER_LEVEL_MONOTONE_GRAPHEMES
 		--HB_BUFFER_CLUSTER_LEVEL_CHARACTERS
 	)
-	hb_buffer_set_direction(hb_buf, hb_dir)
-	hb_buffer_set_script(hb_buf, script)
-	hb_buffer_set_language(hb_buf, lang)
-	hb_buffer_add_codepoints(hb_buf, str, str_len, 0, str_len)
-	hb_shape(font.hb_font, hb_buf, features, num_features)
+	hb_buffer_set_direction(self.hb_buf, hb_dir)
+	hb_buffer_set_script(self.hb_buf, self.script)
+	hb_buffer_set_language(self.hb_buf, self.lang)
+	hb_buffer_add_codepoints(self.hb_buf, self.text, self.text_len, 0, self.text_len)
+	hb_shape(self.font.hb_font, self.hb_buf, self.features, self.num_features)
 
-	self.len  = hb_buffer_get_length(hb_buf)
-	self.info = hb_buffer_get_glyph_infos(hb_buf, nil)
-	self.pos  = hb_buffer_get_glyph_positions(hb_buf, nil)
-
-	self.hb_buf = hb_buf --anchor it
-	self.font = font --anchor it; also for glyph rasterization
-	self.font_size = font_size --for glyph rasterization
-	self.text_len = str_len --for how many cursors to allocate
-	self.rtl = rtl --for cursors
+	self.len  = hb_buffer_get_length(self.hb_buf)
+	self.info = hb_buffer_get_glyph_infos(self.hb_buf, nil)
+	self.pos  = hb_buffer_get_glyph_positions(self.hb_buf, nil)
 
 	--1. scale advances and offsets based on `font.scale` (for bitmap fonts).
 	--2. make the advance of each glyph relative to the start of the run
@@ -46,39 +58,21 @@ terra GlyphRun:shape(
 	--3. compute the run's total advance.
 	var ax: int = 0
 	for i = 0, self.len do
-		ax = (ax + self.pos[i].x_advance) * font.scale
-		self.pos[i].x_offset = self.pos[i].x_offset * font.scale
+		ax = (ax + self.pos[i].x_advance) * self.font.scale
+		self.pos[i].x_offset = self.pos[i].x_offset * self.font.scale
 		self.pos[i].x_advance = ax
 	end
 	self.advance_x = [float](ax) / 64 --for positioning in horizontal flow
-end
 
-function GlyphRun:free()
-	--hb_buffer_free(self.hb_buf)
-	--self.font:unref()
-	fill(self)
+	return true
 end
 
 --iterate clusters in RLE-compressed form.
-local struct Clusters {
-	run: &GlyphRun;
-}
-function Clusters.metamethods.__for(self, body)
-	return quote
-		var self = self.run
-		var c0: codepoint = self.info[0].cluster
-		var i0 = 0
-		for i = 0, self.len do
-			var c = self.info[i].cluster
-			if c ~= c0 then
-				[ body(i0, `i - i0, c0) ]
-				c0 = c
-				i0 = i
-			end
-		end
-		[ body(i0, `self.len - i0, c0) ]
-	end
-end
+local clusters_iter = rle_iterator(GlyphRun,
+	macro(function(self, i) return `self.info[i].cluster end))
+GlyphRun.methods.cluster_runs = macro(function(self)
+	return `clusters_iter{&self, 0, self.len}
+end)
 
 local alloc_grapheme_breaks = global(growbuffer(int8))
 
@@ -196,9 +190,6 @@ end
 
 --[==[
 
---	rtl: bool,
---	trailing_space: bool,
-
 local glyph_count = symbol(int)
 local glyph_pos = symbol(&hb_glyph_position_t)
 
@@ -212,16 +203,11 @@ end
 
 ]==]
 
-terra GlyphRun:compute_cursors(
-	--closure environment
-	str: &codepoint,
-	str_len: int,
-	trailing_space: bool
-)
+terra GlyphRun:compute_cursors()
 
-	self.cursor_offsets = new(int16, str_len + 1) --in logical order
-	self.cursor_xs = new(float, str_len + 1) --in logical order
-	for i = 0, str_len + 1 do
+	self.cursor_offsets = new(int16, self.text_len + 1) --in logical order
+	self.cursor_xs = new(float, self.text_len + 1) --in logical order
+	for i = 0, self.text_len + 1 do
 		self.cursor_offsets[i] = -1 --invalid offset, fixed later
 	end
 
@@ -229,53 +215,53 @@ terra GlyphRun:compute_cursors(
 
 	if self.rtl then
 		--add last logical (first visual), after-the-text cursor
-		self.cursor_offsets[str_len] = str_len
-		self.cursor_xs[str_len] = 0
+		self.cursor_offsets[self.text_len] = self.text_len
+		self.cursor_xs[self.text_len] = 0
 		var i: int = -1 --index in glyph_info
 		var n: int --glyph count
 		var c: int --cluster
 		var cn: int --cluster len
 		var cx: float --cluster x
-		c = str_len
-		for i1, n1, c1 in Clusters{run = self} do
+		c = self.text_len
+		for i1, n1, c1 in self:cluster_runs() do
 			cx = self:pos_x(i1)
 			if i ~= -1 then
-				self:_add_cursors(i, n, c, cn, cx, str, str_len)
+				self:_add_cursors(i, n, c, cn, cx, self.text, self.text_len)
 			end
 			var cn1 = c - c1
 			i, n, c, cn = i1, n1, c1, cn1
 		end
 		if i ~= -1 then
 			cx = self.advance_x
-			self:_add_cursors(i, n, c, cn, cx, str, str_len)
+			self:_add_cursors(i, n, c, cn, cx, self.text, self.text_len)
 		end
 	else
 		var i: int = -1 --index in glyph_info
 		var n: int --glyph count
 		var c: int = -1 --cluster
 		var cx: float --cluster x
-		for i1, n1, c1 in Clusters{self} do
+		for i1, n1, c1 in self:cluster_runs() do
 			if c ~= -1 then
 				var cn = c1 - c
-				self:_add_cursors(i, n, c, cn, cx, str, str_len)
+				self:_add_cursors(i, n, c, cn, cx, self.text, self.text_len)
 			end
 			var cx1 = self:pos_x(i1)
 			i, n, c, cx = i1, n1, c1, cx1
 		end
 		if i ~= -1 then
-			var cn = str_len - c
-			self:_add_cursors(i, n, c, cn, cx, str, str_len)
+			var cn = self.text_len - c
+			self:_add_cursors(i, n, c, cn, cx, self.text, self.text_len)
 		end
 		--add last logical (last visual), after-the-text cursor
-		self.cursor_offsets[str_len] = str_len
-		self.cursor_xs[str_len] = self.advance_x
+		self.cursor_offsets[self.text_len] = self.text_len
+		self.cursor_xs[self.text_len] = self.advance_x
 	end
 
 	--add cursor offsets for all codepoints which are missing one.
 	if grapheme_breaks ~= nil then --there are clusters with multiple codepoints.
 		var c: int --cluster
 		var x: float --cluster x
-		for i = 0, str_len + 1 do
+		for i = 0, self.text_len + 1 do
 			if self.cursor_offsets[i] == -1 then
 				self.cursor_offsets[i] = c
 				self.cursor_xs[i] = x
@@ -288,55 +274,10 @@ terra GlyphRun:compute_cursors(
 
 	--compute `wrap_advance_x` by removing the advance of the trailing space.
 	var wx = self.advance_x
-	if trailing_space then
+	if self.trailing_space then
 		var i = iif(self.rtl, 0, self.len-1)
-		assert(self.info[i].cluster == str_len-1)
+		assert(self.info[i].cluster == self.text_len-1)
 		wx = wx - (self:pos_x(i+1) - self:pos_x(i))
 	end
 	self.wrap_advance_x = wx
-
-	self.trailing_space = trailing_space --for wrapping
-end
-
-terra glyph_run(
-	str: &codepoint,
-	str_offset: int,
-	len: int,
-	trailing_space: bool,
-	font: &Font,
-	font_size: float,
-	features: &hb_feature_t,
-	rtl: bool,
-	script: hb_script_t,
-	lang: hb_language_t
-)
-	--if not font:ref() then return end
-
-	--set up a cache key for this run.
-	var key = GlyphRunCacheKey {
-		font = font;
-		text = str + str_offset;
-		text_len = len;
-		font_size = font_size;
-		rtl = rtl;
-		script = script;
-		lang = lang;
-	}
-
-	--local p = VLS(GlyphRunCacheKey, len)
-	--GlyphRunCacheKey.text = p
-
-	--get the shaped run from cache or shape it and cache it.
-	var glyph_run = self.glyph_runs:get(key)
-	if not glyph_run then
-		glyph_run = self:shape_word(
-			str, str_offset, len, trailing_space,
-			font, font_size, features,
-			rtl, script, lang
-		)
-		self.glyph_runs:put(key, glyph_run)
-	end
-
-	--font:unref()
-	return glyph_run
 end

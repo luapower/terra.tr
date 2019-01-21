@@ -15,6 +15,7 @@ includepath'$L/csrc/harfbuzz/src'
 includepath'$L/csrc/fribidi/src'
 includepath'$L/csrc/libunibreak/src'
 includepath'$L/csrc/freetype/include'
+includepath'$L/csrc/xxhash'
 
 include'stdio.h'
 include'hb.h'
@@ -26,28 +27,75 @@ include'wordbreak.h'
 include'graphemebreak.h'
 include'ft2build.h'
 include'freetype/freetype.h'
+include'xxhash.h'
 
 linklibrary'harfbuzz'
 linklibrary'fribidi'
 linklibrary'unibreak'
 linklibrary'freetype'
+linklibrary'xxhash'
+
+--replace the default hash function with faster xxhash.
+hash = macro(function(size_t, buf, len)
+	size_t = size_t:astype()
+	local xxh = sizeof(size_t) == 8 and XXH64 or XXH32
+	return `xxh(buf, len, 0)
+end)
+
+--utils ----------------------------------------------------------------------
+
+local direct_equal = macro(function(a, b) return `a == b end)
+
+--iterate the RLE chunks of any object with indexable elements.
+function rle_iterator(T, get_value, equal)
+	equal = equal or direct_equal
+	local struct rle_iter { t: &T; i: int; j: int; }
+	function rle_iter.metamethods.__for(self, body)
+		return quote
+			if self.i < self.j then
+				var v0 = get_value(self.t, self.i)
+				var i0 = 0
+				for i = self.i + 1, self.j do
+					var v = get_value(self.t, i)
+					if not equal(v0, v) then
+						[ body(i0, `i - i0, v0) ]
+						v0 = v
+						i0 = i
+					end
+				end
+				[ body(i0, `self.j - self.i - i0, v0) ]
+			end
+		end
+	end
+	return rle_iter
+end
 
 --types ----------------------------------------------------------------------
 
 codepoint = uint32
+cursor_offset_t = int16
+cursor_x_t = float
+
+struct TextRenderer;
+
+struct Font {
+	tr: &TextRenderer;
+	load: {&Font} -> bool;
+	unload: {&Font} -> {};
+	file_data: &opaque;
+	file_size: int;
+	hb_font: &hb_font_t;
+	ft_face: FT_Face;
+	ft_load_flags: int;
+	scale: float;
+	refcount: int;
+}
 
 struct Color {
 	r: float;
 	g: float;
 	b: float;
 	a: float;
-}
-
-struct Font {
-	hb_font: &hb_font_t;
-	ft_face: FT_Face;
-	ft_load_flags: int;
-	scale: float;
 }
 
 DIR_AUTO = 0
@@ -73,8 +121,8 @@ struct TextRun {
 }
 
 struct TextRuns {
-	runs: &TextRun;
-	codepoints: &uint32;
+	runs: arr(TextRun);
+	codepoints: &codepoint;
 	len: int; --text length in codepoints.
 }
 
@@ -84,6 +132,8 @@ struct GlyphRun {
 	text_len: int16;
 	font: &Font;
 	font_size: float;
+	features: &hb_feature_t;
+	num_features: int8;
 	script: hb_script_t;
 	lang: hb_language_t;
 	rtl: bool;
@@ -96,22 +146,24 @@ struct GlyphRun {
 	advance_x: float;
 	wrap_advance_x: float;
 	--for cursor positioning and hit testing
-	cursor_offsets: &int16; --0..text_len
-	cursor_xs: &float; --0..text_len
+	cursor_offsets: &cursor_offset_t; --0..text_len
+	cursor_xs: &cursor_x_t; --0..text_len
 	trailing_space: bool;
-	--rtl: bool;
 }
 
-terra GlyphRun:__hash() --for the LRU cache
+GlyphRun_key_offset = offsetof(GlyphRun, 'text_len')
+GlyphRun_val_offset = offsetof(GlyphRun, 'hb_buf')
+GlyphRun_key_size = GlyphRun_val_offset - GlyphRun_key_offset
 
-end
+struct Line;
 
-terra GlyphRun:__size() --for the LRU cache
-	return
-		sizeof(GlyphRun)
-		+ (sizeof(hb_glyph_info_t) + sizeof(hb_glyph_position_t)) * self.len
-		+ (sizeof(int16) + sizeof(float)) * (self.text_len + 1) --cursors
-end
+struct SubSeg {
+	i: int16;
+	j: int16;
+	text_run: &TextRun;
+	clip_left: cursor_x_t;
+	clip_right: cursor_x_t;
+};
 
 struct Seg {
 	glyph_run: &GlyphRun;
@@ -120,8 +172,8 @@ struct Seg {
 	--for bidi reordering
 	bidi_level: int8;
 	--for cursor positioning
-	text_run: TextRun; --text run of the last sub-segment
-	offset: int16;
+	--text_run: TextRun; --text run of the last sub-segment
+	offset: int; --codepoint offset into the text
 	index: int;
 	--slots filled by layouting
 	x: float;
@@ -132,10 +184,33 @@ struct Seg {
 	line_num: int; --physical line number
 	wrapped: bool; --segment is the last on a wrapped line
 	visible: bool; --segment is not entirely clipped
+	subsegs: arr(SubSeg);
 }
 
+local props = addproperties(Seg)
+local function fw(prop, field)
+	props[prop] = macro(function(self)
+		return `self.[field].[prop]
+	end)
+end
+fw('text'           , 'glyph_run')
+fw('text_len'       , 'glyph_run')
+fw('font'           , 'glyph_run')
+fw('font_size'      , 'glyph_run')
+fw('script'         , 'glyph_run')
+fw('lang'           , 'glyph_run')
+fw('rtl'            , 'glyph_run')
+fw('info'           , 'glyph_run')
+fw('pos'            , 'glyph_run')
+fw('len'            , 'glyph_run')
+fw('cursor_offsets' , 'glyph_run')
+fw('cursor_xs'      , 'glyph_run')
+fw('trailing_space' , 'glyph_run')
+
+SegArray = arr(Seg)
+
 struct Segs {
-	segs: &Seg;
+	segs: SegArray;
 	text_runs: &TextRuns;
 	bidi: bool; --`true` if the text is bidirectional.
 	base_dir: FriBidiParType; --base paragraph direction of the first paragraph
@@ -166,23 +241,22 @@ struct Rasterizer {
 
 }
 
---local GlyphRunCache = lrucache {key_t = GlyphRunCacheKey, val_t = GlyphRun}
+GlyphRunCache = lrucache {key_t = GlyphRun}
 
 struct TextRenderer {
-	--glyph_runs: GlyphRunCache;
+	ft_lib: FT_Library;
+
+	glyph_runs: GlyphRunCache;
+
+	--temporary arrays that grow as long as the longest input text.
+	scripts: arr(hb_script_t);
+	langs: arr(hb_language_t);
+	bidi_types: arr(FriBidiCharType);
+	bracket_types: arr(FriBidiBracketType);
+	levels: arr(FriBidiLevel);
+	linebreaks: arr(char);
+
 	rasterizer: Rasterizer;
 }
-
-struct GlyphRunKey {
-	--cache key fields
-	text: &codepoint;
-	text_len: int16;
-	font: &Font;
-	font_size: float;
-	script: hb_script_t;
-	lang: hb_language_t;
-	rtl: bool;
-}
-print(sizeof(GlyphRunKey))
 
 return tr
