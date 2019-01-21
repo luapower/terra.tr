@@ -255,6 +255,15 @@ struct TextRenderer {
 	bracket_types: arr(FriBidiBracketType);
 	levels: arr(FriBidiLevel);
 	linebreaks: arr(char);
+	substack: arr(SubSeg);
+
+	--constants that neeed to be initialized at runtime.
+	HB_LANGUAGE_EN: hb_language_t;
+	HB_LANGUAGE_DE: hb_language_t;
+	HB_LANGUAGE_ES: hb_language_t;
+	HB_LANGUAGE_FR: hb_language_t;
+	HB_LANGUAGE_RU: hb_language_t;
+	HB_LANGUAGE_ZH: hb_language_t;
 
 	rasterizer: Rasterizer;
 }

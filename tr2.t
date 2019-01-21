@@ -16,8 +16,10 @@ function TextRenderer.metamethods.__cast(from, to, exp)
 				bracket_types=nil,
 				levels=nil,
 				linebreaks=nil,
+				substack=nil,
 			}
 			assert(FT_Init_FreeType(&tr.ft_lib) == 0)
+			self:init_ub_lang()
 			in tr
 		end
 	else
@@ -34,17 +36,9 @@ terra TextRenderer:free()
 	self.bracket_types:free()
 	self.levels:free()
 	self.linebreaks:free()
-end
+	self.substack:free()
 
-terra TextRenderer:shape_word(glyph_run: &GlyphRun)
-	--get the shaped run from cache or shape it and cache it.
-	var pair = self.glyph_runs:get(@glyph_run)
-	if pair == nil then
-		if not glyph_run:shape() then return nil end
-		glyph_run:compute_cursors()
-		pair = self.glyph_runs:put(@glyph_run, true)
-	end
-	return &pair.key
+	FT_Done_Freetype(&tr.ft_lib)
 end
 
 --test -----------------------------------------------------------------------
