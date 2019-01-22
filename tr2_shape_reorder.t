@@ -11,23 +11,14 @@
 
 setfenv(1, require'tr2_env')
 
-local struct Range {
-	left: &Seg;
-	right: &Seg;
-	prev: &Range;
-	bidi_level: int8;
-}
-
-local range_freelist = global(freelist(Range))
-
 -- Merges range with previous range and returns the previous range.
-local terra merge_range_with_prev(range: &Range)
+local terra merge_range_with_prev(tr: &TextRenderer, range: &SegRange)
 	var prev = range.prev
 	assert(prev ~= nil)
 	assert(prev.bidi_level < range.bidi_level)
 
-	var left: &Range
-	var right: &Range
+	var left: &SegRange
+	var right: &SegRange
 	if prev.bidi_level % 2 == 1 then
 		-- Odd, previous goes to the right of range.
 		left = range
@@ -42,7 +33,7 @@ local terra merge_range_with_prev(range: &Range)
 	prev.left = left.left
 	prev.right = right.right
 
-	range_freelist:release(range)
+	tr.ranges:release(range)
 	return prev
 end
 
@@ -53,11 +44,7 @@ end
 -- Caller is responsible to reverse the seg contents for any
 -- seg that has an odd level.
 --
-local terra reorder_segs(seg: &Seg)
-
-	if range_freelist.data == nil then
-		range_freelist:alloc(64)
-	end
+local terra reorder_segs(tr: &TextRenderer, seg: &Seg)
 
 	-- The algorithm here is something like this: sweep segs in the
 	-- logical order, keeping a stack of ranges.  Upon seeing a seg,
@@ -66,14 +53,14 @@ local terra reorder_segs(seg: &Seg)
 	-- merge the seg with the previous range, or create a new range
 	-- for the seg, depending on the level relationship.
 
-	var range: &Range
+	var range: &SegRange
 	while seg ~= nil do
 		var next_seg = seg.next_vis
 
 		while range ~= nil and range.bidi_level > seg.bidi_level
 			and range.prev ~= nil and range.prev.bidi_level >= seg.bidi_level
 		do
-			range = merge_range_with_prev(range)
+			range = merge_range_with_prev(tr, range)
 		end
 
 		if range ~= nil and range.bidi_level >= seg.bidi_level then
@@ -90,7 +77,8 @@ local terra reorder_segs(seg: &Seg)
 			range.bidi_level = seg.bidi_level
 		else
 			-- Allocate new range for seg and push into stack.
-			var r = range_freelist:new()
+			var r = tr.ranges:alloc()
+			assert(r ~= nil)
 			r.left = seg
 			r.right = seg
 			r.bidi_level = seg.bidi_level
@@ -102,13 +90,13 @@ local terra reorder_segs(seg: &Seg)
 	end
 	assert(range ~= nil)
 	while range.prev ~= nil do
-		range = merge_range_with_prev(range)
+		range = merge_range_with_prev(tr, range)
 	end
 
 	range.right.next_vis = nil
 
 	var left = range.left
-	range_freelist:release(range)
+	tr.ranges:release(range)
 	return left
 end
 

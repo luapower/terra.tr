@@ -58,7 +58,7 @@ terra TextRenderer:shape_word(glyph_run: GlyphRun)
 	var pair = self.glyph_runs:get(glyph_run)
 	if pair == nil then
 		if not glyph_run:shape() then return nil end
-		glyph_run:compute_cursors()
+		glyph_run:compute_cursors(self)
 		pair = self.glyph_runs:put(glyph_run, true)
 	end
 	return &pair.key
@@ -66,6 +66,9 @@ end
 
 terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 
+	for i, seg in segments.segs do
+		seg.subsegs:free()
+	end
 	segments.segs:clear()
 	--TODO: remove cached values.
 	--segments._min_w = false
@@ -202,19 +205,13 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 	segments.bidi = reorder_segments --for optimization
 	segments.base_dir = base_dir
 
-	var seg_count = 0
 	var line_num = 1
 
 	var text_run_index = -1
 	var next_i = 0 --char offset of the next text run
 
-	--per-text-run attrs
+	--current char attrs
 	var text_run: &TextRun
-	var font: &Font
-	var font_size: float
-	var features: &hb_feature_t
-
-	--per-char attrs
 	var level: int8
 	var script: hb_script_t
 	var lang: hb_language_t
@@ -226,10 +223,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 	for i = 0, len+1 do --NOTE: going one char beyond the text!
 
 		--per-text-run attts for the current char.
-		var text_run1: &TextRun;
-		var font1: &Font;
-		var font_size1: float;
-		var features1: &hb_feature_t;
+		var text_run1: &TextRun
 
 		--change to the next text run if we're past the current text run.
 		--NOTE: this runs when i == 0 and when len == 0 but not when i == len.
@@ -238,10 +232,6 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 			text_run_index = text_run_index + 1
 			text_run1 = text_runs.runs:at(text_run_index)
 
-			font1 = text_run1.font
-			font_size1 = text_run1.font_size
-			features1 = text_run1.features
-
 			next_i = text_run1.offset + text_run1.len
 			next_i = iif(next_i < len, next_i, -1)
 
@@ -249,9 +239,6 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 
 			--use last char's attrs.
 			text_run1 = text_run
-			font1 = font
-			font_size1 = font_size
-			features1 = features
 
 		end
 
@@ -279,16 +266,13 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 		if i == 0 then
 
 			text_run = text_run1
-			font = font1
-			font_size = font_size1
-			features = features1
 
 			level = level1
 			script = script1
 			lang = lang1
 
 			if len == 0 then
-				font1 = nil --force making a new segment
+				text_run1 = nil --force making a new segment
 			end
 		end
 
@@ -298,9 +282,9 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 		--check if any attributes that require a new segment have changed.
 		var new_segment =
 			linebreak_code < 2
-			or font1 ~= font
-			or font_size1 ~= font_size
-			or features1 ~= features
+			or text_run1.font ~= text_run.font
+			or text_run1.font_size ~= text_run.font_size
+			or text_run1.features ~= text_run.features
 			or level1 ~= level
 			or script1 ~= script
 			or lang1 ~= lang
@@ -335,13 +319,14 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 			var glyph_run = self:shape_word(GlyphRun {
 				text = str + seg_offset;
 				text_len = seg_len;
-				trailing_space = trailing_space;
-				font = font;
-				font_size = font_size;
-				features = features;
-				rtl = rtl;
+				font = text_run.font;
+				font_size = text_run.font_size;
+				features = text_run.features;
+				num_features = text_run.num_features;
 				script = script;
 				lang = lang;
+				rtl = rtl;
+				trailing_space = trailing_space;
 			})
 
 			--2: paragraph, 1: line, 0: softbreak
@@ -349,9 +334,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 
 			if glyph_run ~= nil then --font loaded successfully
 
-				seg_count = seg_count + 1
-
-				var segment = segments.segs:ensure(seg_count)
+				var segment = segments.segs:push()
 				assert(segment ~= nil) --TODO: failure case
 
 				segment.glyph_run = glyph_run
@@ -362,15 +345,17 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 				--for cursor positioning
 				segment.text_run = text_run --text run of the last sub-segment
 				segment.offset = seg_offset
-				segment.index = seg_count
+				segment.index = segments.segs.len-1
 				--slots filled by layouting
-				segment.x = false; segment.advance_x = false --segment's x-axis boundaries
-				segment.next = false --next segment on the same line in text order
-				segment.next_vis = false --next segment on the same line in visual order
-				segment.line = false
+				segment.x = 0; segment.advance_x = 0 --segment's x-axis boundaries
+				segment.next = nil--next segment on the same line in text order
+				segment.next_vis = nil --next segment on the same line in visual order
+				segment.line = nil
 				segment.line_num = line_num --physical line number
 				segment.wrapped = false --segment is the last on a wrapped line
 				segment.visible = true --segment is not entirely clipped
+
+				--[==[
 
 				--add sub-segments from the sub-segment stack and empty the stack.
 				if self.substack.len > 0 then
@@ -378,9 +363,10 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 					var sub_offset = 0
 					var glyph_i = 0
 					var clip_left, clip_right = false, false --from run's origin
-					for i = 1, substack_n + 1, 2 do
-						var sub_len, sub_text_run
-						if i < substack_n  then
+					for i = 1, self.substack.len + 1, 2 do
+						var sub_len: int
+						var sub_text_run: &TextRun
+						if i < self.substack.len  then
 							sub_len, sub_text_run = substack[i], substack[i+1]
 						else --last iteration outside the stack for last sub-segment
 							sub_len, sub_text_run = last_sub_len, text_run
@@ -424,11 +410,12 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 							clip_left = next_cluster > next_sub_offset
 							clip_left = clip_left and glyph_run.cursor_xs[next_sub_offset]
 
-							push(segment, glyph_i)
-							push(segment, last_glyph_i)
-							push(segment, sub_text_run)
-							push(segment, clip_left)
-							push(segment, clip_right)
+							var sub = segment.subsegs:push()
+							sub.i = glyph_i
+							sub.j = last_glyph_i
+							sub.text = sub_text_run
+							sub.clip_left = clip_left
+							sub.clip_right = clip_right
 
 							sub_offset = next_sub_offset
 							glyph_i = last_glyph_i - (clip_left and 0 or 1)
@@ -455,11 +442,13 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 							clip_right = next_cluster > next_sub_offset
 							clip_right = clip_right and glyph_run.cursor_xs[next_sub_offset]
 
-							push(segment, glyph_i)
-							push(segment, last_glyph_i)
-							push(segment, sub_text_run)
-							push(segment, clip_left)
-							push(segment, clip_right)
+							var sub = segment.subsegs:push()
+
+							sub.i = glyph_i
+							sub.j = last_glyph_i
+							sub.text = sub_text_run
+							sub.clip_left = clip_left
+							sub.clip_right = clip_right
 
 							sub_offset = next_sub_offset
 							glyph_i = last_glyph_i + (clip_right and 0 or 1)
@@ -470,10 +459,11 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 					end --for each subsegment
 					self.substack:clear() --empty the stack
 				end --if subsegments
+				]==]
 
 			end --if glyph_run
 
-			if linebreak then
+			if linebreak > 0 then
 				line_num = line_num + 1
 			end
 
@@ -483,27 +473,27 @@ terra TextRenderer:shape(text_runs: &TextRuns, segments: &Segs)
 			--if the last segment ended with a hard line break, add another
 			--empty segment at the end, in order to have a cursor on the last
 			--empty line.
-			if i == len and linebreak then
+			if i == len and linebreak > 0 then
 				linebreak_code = 2 --prevent recursion
 				goto again
 			end
 
 		elseif new_subsegment then
 
+			--[[
 			var sub_len = i - (seg_offset + sub_offset)
 			substack = substack or {}
-			substack[substack_n + 1] = sub_len
-			substack[substack_n + 2] = text_run
-			substack_n = substack_n + 2
+			substack[self.substack.len + 1] = sub_len
+			substack[self.substack.len + 2] = text_run
+			inc(self.substack.len, self.substack.len + 2)
 
 			sub_offset = sub_offset + sub_len
+			]]
+
 		end
 
 		--update last char state with current char state.
 		text_run = text_run1
-		font = font1
-		font_size = font_size1
-		features = features1
 
 		level = level1
 		script = script1

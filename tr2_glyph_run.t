@@ -24,16 +24,21 @@ terra GlyphRun:__memsize()
 end
 
 terra GlyphRun:free()
+	hb_buffer_destroy(self.hb_buf)
+	free(self.text)
 	free(self.cursor_xs)
 	free(self.cursor_offsets)
-	hb_buffer_destroy(self.hb_buf)
 	self.font:unref()
 	fill(self)
 end
 
 terra GlyphRun:shape()
 	if not self.font:ref() then return false end
-	--font:setsize(font_size)
+	self.font:setsize(self.font_size)
+
+	var new_text = new(codepoint, self.text_len, false)
+	if new_text == nil then return false end
+	self.text = copy(new_text, self.text, self.text_len)
 
 	var hb_dir = iif(self.rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR)
 	self.hb_buf = hb_buffer_create()
@@ -74,8 +79,6 @@ GlyphRun.methods.cluster_runs = macro(function(self)
 	return `clusters_iter{&self, 0, self.len}
 end)
 
-local alloc_grapheme_breaks = global(growbuffer(int8))
-
 local terra count_graphemes(grapheme_breaks: &int8, start: int, len: int)
 	var n = 0
 	for i = start, start+len do
@@ -95,20 +98,18 @@ local terra next_grapheme(grapheme_breaks: &int8, i: int, len: int)
 	return i
 end
 
-local alloc_carets_buffer = global(growbuffer(hb_position_t))
-
 local get_ligature_carets = macro(function(
-	hb_font, direction, glyph_index
+	tr, hb_font, direction, glyph_index
 )
 	return quote
 		var count = hb_ot_layout_get_ligature_carets(hb_font, direction,
 			glyph_index, 0, nil, nil)
-		var carets_buf = alloc_carets_buffer(count)
+		tr.carets_buffer:preallocate(count)
 		var count_buf: uint
 		hb_ot_layout_get_ligature_carets(hb_font, direction, glyph_index,
-			0, &count_buf, carets_buf)
+			0, &count_buf, tr.carets_buffer.elements)
 	in
-		carets_buf, count_buf
+		tr.carets_buffer.elements, count_buf
 	end
 end)
 
@@ -118,6 +119,7 @@ terra GlyphRun:pos_x(i: int)
 end
 
 terra GlyphRun:_add_cursors(
+	tr: &TextRenderer,
 	glyph_offset: int,
 	glyph_len: int,
 	cluster: int,
@@ -134,10 +136,10 @@ terra GlyphRun:_add_cursors(
 	--the cluster is made of multiple codepoints. check how many
 	--graphemes it contains since we need to add additional cursor
 	--positions at each grapheme boundary.
-	var grapheme_breaks = alloc_grapheme_breaks(str_len)
+	tr.grapheme_breaks:preallocate(str_len)
 	var lang = nil --not used in current libunibreak impl.
-	set_graphemebreaks_utf32(str, str_len, lang, grapheme_breaks)
-	var grapheme_count = count_graphemes(grapheme_breaks, cluster, cluster_len)
+	set_graphemebreaks_utf32(str, str_len, lang, tr.grapheme_breaks.elements)
+	var grapheme_count = count_graphemes(tr.grapheme_breaks.elements, cluster, cluster_len)
 	if grapheme_count <= 1 then return end
 
 	--the cluster is made of multiple graphemes, which can be the
@@ -149,6 +151,7 @@ terra GlyphRun:_add_cursors(
 		var cluster_x = self:pos_x(i)
 		var carets, caret_count =
 			get_ligature_carets(
+				tr,
 				self.font.hb_font,
 				iif(self.rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR),
 				glyph_index)
@@ -158,7 +161,7 @@ terra GlyphRun:_add_cursors(
 			--add the ligature carets from the font.
 			for i = 0, caret_count-1 do
 				--create a synthetic cluster at each grapheme boundary.
-				cluster = next_grapheme(grapheme_breaks, cluster, str_len)
+				cluster = next_grapheme(tr.grapheme_breaks.elements, cluster, str_len)
 				var lig_x = carets[i] / 64
 				self.cursor_offsets[cluster] = cluster
 				self.cursor_xs[cluster] = cluster_x + lig_x
@@ -175,7 +178,7 @@ terra GlyphRun:_add_cursors(
 			var w = total_advance_x / grapheme_count
 			for i = 1, grapheme_count-1 do
 				--create a synthetic cluster at each grapheme boundary.
-				cluster = next_grapheme(grapheme_breaks, cluster, str_len)
+				cluster = next_grapheme(tr.grapheme_breaks.elements, cluster, str_len)
 				var lig_x = i * w
 				self.cursor_offsets[cluster] = cluster
 				self.cursor_xs[cluster] = cluster_x + lig_x
@@ -203,7 +206,7 @@ end
 
 ]==]
 
-terra GlyphRun:compute_cursors()
+terra GlyphRun:compute_cursors(tr: &TextRenderer)
 
 	self.cursor_offsets = new(int16, self.text_len + 1) --in logical order
 	self.cursor_xs = new(float, self.text_len + 1) --in logical order
@@ -226,14 +229,14 @@ terra GlyphRun:compute_cursors()
 		for i1, n1, c1 in self:cluster_runs() do
 			cx = self:pos_x(i1)
 			if i ~= -1 then
-				self:_add_cursors(i, n, c, cn, cx, self.text, self.text_len)
+				self:_add_cursors(tr, i, n, c, cn, cx, self.text, self.text_len)
 			end
 			var cn1 = c - c1
 			i, n, c, cn = i1, n1, c1, cn1
 		end
 		if i ~= -1 then
 			cx = self.advance_x
-			self:_add_cursors(i, n, c, cn, cx, self.text, self.text_len)
+			self:_add_cursors(tr, i, n, c, cn, cx, self.text, self.text_len)
 		end
 	else
 		var i: int = -1 --index in glyph_info
@@ -243,14 +246,14 @@ terra GlyphRun:compute_cursors()
 		for i1, n1, c1 in self:cluster_runs() do
 			if c ~= -1 then
 				var cn = c1 - c
-				self:_add_cursors(i, n, c, cn, cx, self.text, self.text_len)
+				self:_add_cursors(tr, i, n, c, cn, cx, self.text, self.text_len)
 			end
 			var cx1 = self:pos_x(i1)
 			i, n, c, cx = i1, n1, c1, cx1
 		end
 		if i ~= -1 then
 			var cn = self.text_len - c
-			self:_add_cursors(i, n, c, cn, cx, self.text, self.text_len)
+			self:_add_cursors(tr, i, n, c, cn, cx, self.text, self.text_len)
 		end
 		--add last logical (last visual), after-the-text cursor
 		self.cursor_offsets[self.text_len] = self.text_len

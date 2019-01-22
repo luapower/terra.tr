@@ -8,8 +8,9 @@ setfenv(1, tr)
 
 --dependencies ---------------------------------------------------------------
 
-lrucache = require'lrucache'
 phf = require'phf'
+freelist = require'freelist'
+lrucache = require'lrucache'
 
 includepath'$L/csrc/harfbuzz/src'
 includepath'$L/csrc/fribidi/src'
@@ -79,16 +80,23 @@ cursor_x_t = float
 struct TextRenderer;
 
 struct Font {
-	tr: &TextRenderer;
-	load: {&Font} -> bool;
-	unload: {&Font} -> {};
+	tr: &TextRenderer; --for ft_lib
+	--loading and unloading
 	file_data: &opaque;
 	file_size: int;
+	load: {&Font} -> bool;
+	unload: {&Font} -> {};
+	refcount: int;
+	--freetype & harfbuzz font objects
 	hb_font: &hb_font_t;
 	ft_face: FT_Face;
 	ft_load_flags: int;
-	scale: float;
-	refcount: int;
+	--font metrics per current size
+	size: float;
+	scale: float; --scaling factor for bitmap fonts
+	ascent: float;
+	descent: float;
+	size_changed: {&Font} -> {};
 }
 
 struct Color {
@@ -108,6 +116,7 @@ struct TextRun {
 	font: &Font;
 	font_size: float;
 	features: &hb_feature_t;
+	num_features: int8;
 	script: hb_script_t;
 	lang: hb_language_t;
 	dir: int8; --bidi direction for current and subsequent paragraphs.
@@ -172,7 +181,7 @@ struct Seg {
 	--for bidi reordering
 	bidi_level: int8;
 	--for cursor positioning
-	--text_run: TextRun; --text run of the last sub-segment
+	text_run: &TextRun; --text run of the last sub-segment
 	offset: int; --codepoint offset into the text
 	index: int;
 	--slots filled by layouting
@@ -243,6 +252,13 @@ struct Rasterizer {
 
 GlyphRunCache = lrucache {key_t = GlyphRun}
 
+struct SegRange {
+	left: &Seg;
+	right: &Seg;
+	prev: &SegRange;
+	bidi_level: int8;
+}
+
 struct TextRenderer {
 	ft_lib: FT_Library;
 
@@ -255,7 +271,10 @@ struct TextRenderer {
 	bracket_types: arr(FriBidiBracketType);
 	levels: arr(FriBidiLevel);
 	linebreaks: arr(char);
+	grapheme_breaks: arr(char);
+	carets_buffer: arr(hb_position_t);
 	substack: arr(SubSeg);
+	ranges: freelist(SegRange);
 
 	--constants that neeed to be initialized at runtime.
 	HB_LANGUAGE_EN: hb_language_t;

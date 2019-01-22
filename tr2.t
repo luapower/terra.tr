@@ -2,25 +2,63 @@
 setfenv(1, require'tr2_env')
 require'tr2_shape'
 
+--TextRuns -------------------------------------------------------------------
+
+
+function TextRuns.metamethods.__cast(from, to, exp)
+	if from == niltype or from:isunit() then
+		return `TextRuns {runs = nil, codepoints = nil, len = 0}
+	else
+		error'invalid cast'
+	end
+end
+
+function TextRun.metamethods.__cast(from, to, exp)
+	if from == niltype or from:isunit() then
+		return `TextRun {
+			offset = 0,
+			len = 0,
+			font = nil,
+			font_size = 0,
+			features = nil,
+			num_features = 0,
+			script = HB_SCRIPT_INVALID,
+			lang = nil,
+			dir = FRIBIDI_PAR_ON,
+			line_spacing = 1,
+			hardline_spacing = 1,
+			paragraph_spacing = 2,
+			nowrap = false,
+			color = Color {0, 0, 0, 0},
+			opacity = 1,
+			operator = CAIRO_OPERATOR_OVER
+		}
+	else
+		error'invalid cast'
+	end
+end
+
 --TextRenderer ---------------------------------------------------------------
 
 function TextRenderer.metamethods.__cast(from, to, exp)
 	if from == niltype or from:isunit() then
 		return quote
-			var tr = TextRenderer {
+			var self = TextRenderer {
 				glyph_runs=nil,
-
 				scripts=nil,
 				langs=nil,
 				bidi_types=nil,
 				bracket_types=nil,
 				levels=nil,
 				linebreaks=nil,
+				grapheme_breaks=nil,
+				carets_buffer=nil,
 				substack=nil,
+				ranges=64,
 			}
-			assert(FT_Init_FreeType(&tr.ft_lib) == 0)
+			assert(FT_Init_FreeType(&self.ft_lib) == 0)
 			self:init_ub_lang()
-			in tr
+			in self
 		end
 	else
 		error'invalid cast'
@@ -29,16 +67,17 @@ end
 
 terra TextRenderer:free()
 	self.glyph_runs:free()
-
 	self.scripts:free()
 	self.langs:free()
 	self.bidi_types:free()
 	self.bracket_types:free()
 	self.levels:free()
 	self.linebreaks:free()
+	self.grapheme_breaks:free()
+	self.carets_buffer:free()
 	self.substack:free()
-
-	FT_Done_Freetype(&tr.ft_lib)
+	self.ranges:free()
+	FT_Done_FreeType(self.ft_lib)
 end
 
 --test -----------------------------------------------------------------------
@@ -76,6 +115,38 @@ terra test()
 	font.load = load_font
 	font.unload = unload_font
 
+	var runs: TextRuns = nil
+	runs.len = 5
+	runs.codepoints = new(codepoint, 3)
+	runs.codepoints[0] = 65
+	runs.codepoints[1] = 66
+	runs.codepoints[2] = 67
+	var r = TextRun(nil)
+	r.offset = 0
+	r.len = 3
+	r.font = &font
+	r.font_size = 14
+	runs.runs:push(r)
+
+	--[[
+	font_size: float;
+	features: &hb_feature_t;
+	num_features: int8;
+	script: hb_script_t;
+	lang: hb_language_t;
+	dir: int8; --bidi direction for current and subsequent paragraphs.
+	line_spacing: float; --line spacing multiplication factor (1).
+	hardline_spacing: float; --line spacing MF for hard-breaked lines (1).
+	paragraph_spacing: float; --paragraph spacing MF (2).
+	nowrap: bool; --disable word wrapping.
+	color: Color;
+	opacity: float; --the opacity level in 0..1 (1).
+	operator: int; --blending operator (CAIRO_OPERATOR_OVER).
+	]]
+
+	free(runs.codepoints)
+
+	--[[
 	var run: GlyphRun; fill(&run)
 	var a = arrayof(uint32, 65, 66, 67)
 	run.text = a
@@ -90,6 +161,7 @@ terra test()
 
 	var runp = tr:shape_word(&run)
 	assert(runp ~= nil)
+	]]
 
 	tr:free()
 end
