@@ -1,8 +1,9 @@
 
---Shaping a single word into an array of glyphs called a glyph run.
+--Shaping a single word into a cached array of glyphs called a glyph run.
 
 setfenv(1, require'tr2_env')
 require'tr2_font'
+require'tr2_rle'
 
 --interface with the LRU cache
 
@@ -67,14 +68,25 @@ terra GlyphRun:shape()
 		self.pos[i].x_offset = self.pos[i].x_offset * self.font.scale
 		self.pos[i].x_advance = ax
 	end
-	self.advance_x = [float](ax) / 64 --for positioning in horizontal flow
+	self.advance_x = [num](ax) / 64 --for positioning in horizontal flow
+
+	self.ascent = self.font.ascent
+	self.descent = self.font.descent
 
 	return true
 end
 
 --iterate clusters in RLE-compressed form.
-local clusters_iter = rle_iterator(GlyphRun,
-	macro(function(self, i) return `self.info[i].cluster end))
+local c1 = symbol(uint32)
+local c0 = symbol(uint32)
+local clusters_iter = rle_iterator{
+	state = &GlyphRun,
+	for_variables = {c0},
+	declare_variables = function()        return quote var [c1], [c0] end end,
+	save_values       = function()        return quote c0 = c1 end end,
+	load_values       = function(self, i) return quote c1 = self.info[i].cluster end end,
+	values_different  = function()        return `c0 ~= c1 end,
+}
 GlyphRun.methods.cluster_runs = macro(function(self)
 	return `clusters_iter{&self, 0, self.len}
 end)
@@ -124,7 +136,7 @@ terra GlyphRun:_add_cursors(
 	glyph_len: int,
 	cluster: int,
 	cluster_len: int,
-	cluster_x: float,
+	cluster_x: num,
 	--closure environment
 	str: &codepoint,
 	str_len: int
@@ -191,25 +203,10 @@ terra GlyphRun:_add_cursors(
 	end
 end
 
---[==[
-
-local glyph_count = symbol(int)
-local glyph_pos = symbol(&hb_glyph_position_t)
-
-local function cmp_clusters(glyph_info, i, cluster)
-	return glyph_info[i].cluster < cluster -- < < [=] = < <
-end
-
-local function cmp_clusters_reverse(glyph_info, i, cluster)
-	return cluster < glyph_info[i].cluster -- < < [=] = < <
-end
-
-]==]
-
 terra GlyphRun:compute_cursors(tr: &TextRenderer)
 
 	self.cursor_offsets = new(int16, self.text_len + 1) --in logical order
-	self.cursor_xs = new(float, self.text_len + 1) --in logical order
+	self.cursor_xs = new(num, self.text_len + 1) --in logical order
 	for i = 0, self.text_len + 1 do
 		self.cursor_offsets[i] = -1 --invalid offset, fixed later
 	end
@@ -224,7 +221,7 @@ terra GlyphRun:compute_cursors(tr: &TextRenderer)
 		var n: int --glyph count
 		var c: int --cluster
 		var cn: int --cluster len
-		var cx: float --cluster x
+		var cx: num --cluster x
 		c = self.text_len
 		for i1, n1, c1 in self:cluster_runs() do
 			cx = self:pos_x(i1)
@@ -242,7 +239,7 @@ terra GlyphRun:compute_cursors(tr: &TextRenderer)
 		var i: int = -1 --index in glyph_info
 		var n: int --glyph count
 		var c: int = -1 --cluster
-		var cx: float --cluster x
+		var cx: num --cluster x
 		for i1, n1, c1 in self:cluster_runs() do
 			if c ~= -1 then
 				var cn = c1 - c
@@ -263,7 +260,7 @@ terra GlyphRun:compute_cursors(tr: &TextRenderer)
 	--add cursor offsets for all codepoints which are missing one.
 	if grapheme_breaks ~= nil then --there are clusters with multiple codepoints.
 		var c: int --cluster
-		var x: float --cluster x
+		var x: num --cluster x
 		for i = 0, self.text_len + 1 do
 			if self.cursor_offsets[i] == -1 then
 				self.cursor_offsets[i] = c
@@ -283,4 +280,15 @@ terra GlyphRun:compute_cursors(tr: &TextRenderer)
 		wx = wx - (self:pos_x(i+1) - self:pos_x(i))
 	end
 	self.wrap_advance_x = wx
+end
+
+terra TextRenderer:shape_word(glyph_run: GlyphRun)
+	--get the shaped run from cache or shape it and cache it.
+	var pair = self.glyph_runs:get(glyph_run)
+	if pair == nil then
+		if not glyph_run:shape() then return nil end
+		glyph_run:compute_cursors(self)
+		pair = self.glyph_runs:put(glyph_run, true)
+	end
+	return &pair.key
 end

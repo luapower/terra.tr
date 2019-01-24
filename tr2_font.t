@@ -34,7 +34,7 @@ terra Font:unref()
 	end
 end
 
-terra Font:setsize(size: float)
+terra Font:setsize(size: num)
 	if self.size == size then return end
 	self.size = size
 
@@ -42,7 +42,7 @@ terra Font:setsize(size: float)
 	var size_index: int
 	var fixed_size = size
 	var found: bool
-	var best_diff: float = 1.0/0
+	var best_diff: num = 1.0/0
 	for i = 0, self.ft_face.num_fixed_sizes do
 		var sz = self.ft_face.available_sizes[i]
 		var this_size = sz.height

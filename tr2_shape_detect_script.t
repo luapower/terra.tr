@@ -52,15 +52,14 @@ local terra pair(c: codepoint): {bool, int, bool}
 	return true, pairs_array[i-1], open
 end
 
-local stack = global(arr(codepoint))
-
 --fills a buffer with the Script property for each char in a utf32 buffer.
 --uses UAX#24 Section 5.1 and 5.2 to resolve chars with implicit scripts.
-local terra detect_scripts(s: &codepoint, len: int, outbuf: &hb_script_t)
+local terra detect_scripts(tr: &TextRenderer, s: &codepoint, len: int, outbuf: &hb_script_t)
+	var stack = tr.cpstack
+	stack:clear()
 	var unicode_funcs = hb_unicode_funcs_get_default()
 	var script = HB_SCRIPT_COMMON
 	var base_char_i = 0 --index of base character in combining sequence
-	stack:clear()
 	for i = 0, len do
 		var c = s[i]
 		if is_combining_mark(unicode_funcs, c) then --Section 5.2
@@ -80,8 +79,8 @@ local terra detect_scripts(s: &codepoint, len: int, outbuf: &hb_script_t)
 				var ispair, pair, open = pair(c)
 				if ispair then
 					if open then --remember the enclosing script
-						stack:push(script)
-						stack:push(pair)
+						assert(stack:push(script) ~= -1)
+						assert(stack:push(pair) ~= -1)
 					else --restore the enclosing script
 						for i = stack.len-1, -1, -2 do
 							if stack(i) == pair then --pair opened here

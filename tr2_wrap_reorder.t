@@ -12,7 +12,7 @@
 setfenv(1, require'tr2_env')
 
 -- Merges range with previous range and returns the previous range.
-local terra merge_range_with_prev(tr: &TextRenderer, range: &SegRange)
+local terra merge_range_with_prev(range: &SegRange, ranges: &RangesFreelist)
 	var prev = range.prev
 	assert(prev ~= nil)
 	assert(prev.bidi_level < range.bidi_level)
@@ -32,8 +32,7 @@ local terra merge_range_with_prev(tr: &TextRenderer, range: &SegRange)
 	left.right.next_vis = right.left
 	prev.left = left.left
 	prev.right = right.right
-
-	tr.ranges:release(range)
+	ranges:release(range)
 	return prev
 end
 
@@ -44,7 +43,7 @@ end
 -- Caller is responsible to reverse the seg contents for any
 -- seg that has an odd level.
 --
-local terra reorder_segs(tr: &TextRenderer, seg: &Seg)
+local terra reorder_segs(seg: &Seg, ranges: &RangesFreelist)
 
 	-- The algorithm here is something like this: sweep segs in the
 	-- logical order, keeping a stack of ranges.  Upon seeing a seg,
@@ -60,7 +59,7 @@ local terra reorder_segs(tr: &TextRenderer, seg: &Seg)
 		while range ~= nil and range.bidi_level > seg.bidi_level
 			and range.prev ~= nil and range.prev.bidi_level >= seg.bidi_level
 		do
-			range = merge_range_with_prev(tr, range)
+			range = merge_range_with_prev(range, ranges)
 		end
 
 		if range ~= nil and range.bidi_level >= seg.bidi_level then
@@ -77,7 +76,7 @@ local terra reorder_segs(tr: &TextRenderer, seg: &Seg)
 			range.bidi_level = seg.bidi_level
 		else
 			-- Allocate new range for seg and push into stack.
-			var r = tr.ranges:alloc()
+			var r = ranges:alloc()
 			assert(r ~= nil)
 			r.left = seg
 			r.right = seg
@@ -90,13 +89,13 @@ local terra reorder_segs(tr: &TextRenderer, seg: &Seg)
 	end
 	assert(range ~= nil)
 	while range.prev ~= nil do
-		range = merge_range_with_prev(tr, range)
+		range = merge_range_with_prev(range, ranges)
 	end
 
 	range.right.next_vis = nil
 
 	var left = range.left
-	tr.ranges:release(range)
+	ranges:release(range)
 	return left
 end
 

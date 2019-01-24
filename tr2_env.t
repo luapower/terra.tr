@@ -9,7 +9,7 @@ setfenv(1, tr)
 --dependencies ---------------------------------------------------------------
 
 phf = require'phf'
-freelist = require'freelist'
+fixedfreelist = require'fixedfreelist'
 lrucache = require'lrucache'
 
 includepath'$L/csrc/harfbuzz/src'
@@ -43,39 +43,37 @@ hash = macro(function(size_t, buf, len)
 	return `xxh(buf, len, 0)
 end)
 
---utils ----------------------------------------------------------------------
+--enums ----------------------------------------------------------------------
 
-local direct_equal = macro(function(a, b) return `a == b end)
+ALIGN_AUTO = 0 --align_x
 
---iterate the RLE chunks of any object with indexable elements.
-function rle_iterator(T, get_value, equal)
-	equal = equal or direct_equal
-	local struct rle_iter { t: &T; i: int; j: int; }
-	function rle_iter.metamethods.__for(self, body)
-		return quote
-			if self.i < self.j then
-				var v0 = get_value(self.t, self.i)
-				var i0 = 0
-				for i = self.i + 1, self.j do
-					var v = get_value(self.t, i)
-					if not equal(v0, v) then
-						[ body(i0, `i - i0, v0) ]
-						v0 = v
-						i0 = i
-					end
-				end
-				[ body(i0, `self.j - self.i - i0, v0) ]
-			end
-		end
-	end
-	return rle_iter
-end
+--align_x
+ALIGN_LEFT = 1
+ALIGN_RIGHT = 2
+ALIGN_CENTER = 3
+
+--align_y
+ALIGN_TOP = 1
+ALIGN_BOTTOM = 2
+ALIGN_CENTER = 3
+
+--dir
+DIR_AUTO = FRIBIDI_PAR_ON
+DIR_LTR  = FRIBIDI_PAR_LTR
+DIR_RTL  = FRIBIDI_PAR_RTL
+DIR_WLTR = FRIBIDI_PAR_WLTR
+DIR_WRTL = FRIBIDI_PAR_WRTL
+
+--linebreak codes
+BREAK_NONE = 0
+BREAK_LINE = 1
+BREAK_PARA = 2
 
 --types ----------------------------------------------------------------------
 
 codepoint = uint32
 cursor_offset_t = int16
-cursor_x_t = float
+cursor_x_t = num
 
 struct TextRenderer;
 
@@ -92,41 +90,31 @@ struct Font {
 	ft_face: FT_Face;
 	ft_load_flags: int;
 	--font metrics per current size
-	size: float;
-	scale: float; --scaling factor for bitmap fonts
-	ascent: float;
-	descent: float;
+	size: num;
+	scale: num; --scaling factor for bitmap fonts
+	ascent: num;
+	descent: num;
 	size_changed: {&Font} -> {};
 }
 
-struct Color {
-	r: float;
-	g: float;
-	b: float;
-	a: float;
-}
-
-DIR_AUTO = 0
-DIR_LTR = 1
-DIR_RTL = 2
+local Color = tuple(double, double, double, double)
 
 struct TextRun {
 	offset: int; --offset in the text, in codepoints.
-	len: int; --text run length in codepoints.
 	font: &Font;
-	font_size: float;
+	font_size: num;
 	features: &hb_feature_t;
 	num_features: int8;
 	script: hb_script_t;
 	lang: hb_language_t;
-	dir: int8; --bidi direction for current and subsequent paragraphs.
-	line_spacing: float; --line spacing multiplication factor (1).
-	hardline_spacing: float; --line spacing MF for hard-breaked lines (1).
-	paragraph_spacing: float; --paragraph spacing MF (2).
+	dir: FriBidiParType; --bidi direction for current and subsequent paragraphs.
+	line_spacing: num; --line spacing multiplication factor (1).
+	hardline_spacing: num; --line spacing MF for hard-breaked lines (1).
+	paragraph_spacing: num; --paragraph spacing MF (2).
 	nowrap: bool; --disable word wrapping.
 	color: Color;
-	opacity: float; --the opacity level in 0..1 (1).
-	operator: int; --blending operator (CAIRO_OPERATOR_OVER).
+	opacity: double; --the opacity level in 0..1 (1).
+	operator: int;   --blending operator (CAIRO_OPERATOR_OVER).
 }
 
 struct TextRuns {
@@ -134,13 +122,17 @@ struct TextRuns {
 	codepoints: &codepoint;
 	len: int; --text length in codepoints.
 }
+terra TextRuns:eof(i: int)
+	var following_run = self.runs:at(i + 1)
+	return iif(following_run ~= nil, following_run.offset, self.len)
+end
 
 struct GlyphRun {
 	--cache key fields
 	text: &codepoint;
 	text_len: int16;
 	font: &Font;
-	font_size: float;
+	font_size: num;
 	features: &hb_feature_t;
 	num_features: int8;
 	script: hb_script_t;
@@ -152,8 +144,10 @@ struct GlyphRun {
 	pos: &hb_glyph_position_t; --0..len-1
 	len: int16; --glyph count
 	--for positioning in horizontal flow
-	advance_x: float;
-	wrap_advance_x: float;
+	ascent: num;
+	descent: num;
+	advance_x: num;
+	wrap_advance_x: num;
 	--for cursor positioning and hit testing
 	cursor_offsets: &cursor_offset_t; --0..text_len
 	cursor_xs: &cursor_x_t; --0..text_len
@@ -176,21 +170,20 @@ struct SubSeg {
 
 struct Seg {
 	glyph_run: &GlyphRun;
+	line_num: int; --physical line number
 	--for line breaking
-	linebreak: int8; --hard break
+	linebreak: enum;
 	--for bidi reordering
-	bidi_level: int8;
+	bidi_level: FriBidiLevel;
 	--for cursor positioning
-	text_run: &TextRun; --text run of the last sub-segment
+	text_run: &TextRun; --text run of the first sub-segment
 	offset: int; --codepoint offset into the text
-	index: int;
 	--slots filled by layouting
-	x: float;
-	advance_x: float; --segment's x-axis boundaries
+	x: num;
+	advance_x: num; --segment's x-axis boundaries
 	next: &Seg; --next segment on the same line in text order
 	next_vis: &Seg; --next segment on the same line in visual order
 	line: &Line;
-	line_num: int; --physical line number
 	wrapped: bool; --segment is the last on a wrapped line
 	visible: bool; --segment is not entirely clipped
 	subsegs: arr(SubSeg);
@@ -216,34 +209,49 @@ fw('cursor_offsets' , 'glyph_run')
 fw('cursor_xs'      , 'glyph_run')
 fw('trailing_space' , 'glyph_run')
 
-SegArray = arr(Seg)
+struct Lines;
 
 struct Segs {
-	segs: SegArray;
+	array: arr(Seg);
 	text_runs: &TextRuns;
 	bidi: bool; --`true` if the text is bidirectional.
 	base_dir: FriBidiParType; --base paragraph direction of the first paragraph
+	lines: Lines;
+	--cached computed values
+	_min_w: num;
+	_max_w: num;
+	page_h: num;
 }
 
 struct Line {
 	index: int;
 	first: &Seg; --first segment in text order
 	first_vis: &Seg; --first segment in visual order
-	x: float;
-	y: float;
-	advance_x: float;
-	ascent: float;
-	descent: float;
-	spaced_ascent: float;
-	spaced_descent: float;
+	x: num;
+	y: num;
+	advance_x: num;
+	ascent: num;
+	descent: num;
+	spaced_ascent: num;
+	spaced_descent: num;
+	spacing: num;
 	visible: bool; --entirely clipped or not
 }
 
 struct Lines {
-	lines: &Line;
-	max_ax: float; --text's maximum x-advance (equivalent to text's width).
-	h: float; --text's wrapped height.
-	spaced_h: float; --text's wrapped height including line and paragraph spacing.
+	array: arr(Line);
+	max_ax: num; --text's maximum x-advance (equivalent to text's width).
+	h: num; --text's wrapped height.
+	spaced_h: num; --text's wrapped height including line and paragraph spacing.
+	baseline: num;
+	first_visible: int;
+	last_visible: int;
+	min_x: num;
+	x: num;
+	y: num;
+	align_x: enum;
+	align_y: enum;
+	clip_valid: bool;
 }
 
 struct Rasterizer {
@@ -259,12 +267,15 @@ struct SegRange {
 	bidi_level: int8;
 }
 
+RangesFreelist = fixedfreelist(SegRange)
+
 struct TextRenderer {
 	ft_lib: FT_Library;
 
 	glyph_runs: GlyphRunCache;
 
 	--temporary arrays that grow as long as the longest input text.
+	cpstack: arr(codepoint);
 	scripts: arr(hb_script_t);
 	langs: arr(hb_language_t);
 	bidi_types: arr(FriBidiCharType);
@@ -274,7 +285,7 @@ struct TextRenderer {
 	grapheme_breaks: arr(char);
 	carets_buffer: arr(hb_position_t);
 	substack: arr(SubSeg);
-	ranges: freelist(SegRange);
+	ranges: RangesFreelist;
 
 	--constants that neeed to be initialized at runtime.
 	HB_LANGUAGE_EN: hb_language_t;

@@ -1,6 +1,8 @@
 
 setfenv(1, require'tr2_env')
 require'tr2_shape'
+require'tr2_wrap'
+require'tr2_align'
 
 --TextRuns -------------------------------------------------------------------
 
@@ -17,21 +19,20 @@ function TextRun.metamethods.__cast(from, to, exp)
 	if from == niltype or from:isunit() then
 		return `TextRun {
 			offset = 0,
-			len = 0,
 			font = nil,
 			font_size = 0,
 			features = nil,
 			num_features = 0,
-			script = HB_SCRIPT_INVALID,
+			script = HB_SCRIPT_COMMON,
 			lang = nil,
-			dir = FRIBIDI_PAR_ON,
+			dir = DIR_AUTO,
 			line_spacing = 1,
 			hardline_spacing = 1,
 			paragraph_spacing = 2,
 			nowrap = false,
-			color = Color {0, 0, 0, 0},
+			color = {0, 0, 0, 1},
 			opacity = 1,
-			operator = CAIRO_OPERATOR_OVER
+			operator = 0 --CAIRO_OPERATOR_OVER
 		}
 	else
 		error'invalid cast'
@@ -45,6 +46,7 @@ function TextRenderer.metamethods.__cast(from, to, exp)
 		return quote
 			var self = TextRenderer {
 				glyph_runs=nil,
+				cpstack=nil,
 				scripts=nil,
 				langs=nil,
 				bidi_types=nil,
@@ -54,8 +56,10 @@ function TextRenderer.metamethods.__cast(from, to, exp)
 				grapheme_breaks=nil,
 				carets_buffer=nil,
 				substack=nil,
-				ranges=64,
+				ranges=nil,
 			}
+			assert(self.ranges:preallocate(64))
+			assert(self.cpstack:preallocate(64))
 			assert(FT_Init_FreeType(&self.ft_lib) == 0)
 			self:init_ub_lang()
 			in self
@@ -67,6 +71,7 @@ end
 
 terra TextRenderer:free()
 	self.glyph_runs:free()
+	self.cpstack:free()
 	self.scripts:free()
 	self.langs:free()
 	self.bidi_types:free()
@@ -123,26 +128,9 @@ terra test()
 	runs.codepoints[2] = 67
 	var r = TextRun(nil)
 	r.offset = 0
-	r.len = 3
 	r.font = &font
 	r.font_size = 14
 	runs.runs:push(r)
-
-	--[[
-	font_size: float;
-	features: &hb_feature_t;
-	num_features: int8;
-	script: hb_script_t;
-	lang: hb_language_t;
-	dir: int8; --bidi direction for current and subsequent paragraphs.
-	line_spacing: float; --line spacing multiplication factor (1).
-	hardline_spacing: float; --line spacing MF for hard-breaked lines (1).
-	paragraph_spacing: float; --paragraph spacing MF (2).
-	nowrap: bool; --disable word wrapping.
-	color: Color;
-	opacity: float; --the opacity level in 0..1 (1).
-	operator: int; --blending operator (CAIRO_OPERATOR_OVER).
-	]]
 
 	free(runs.codepoints)
 
