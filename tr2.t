@@ -1,11 +1,21 @@
 
+--Text shaping & rendering engine for Terra.
+--Written by Cosmin Apreutesei. Public Domain.
+
+--This is a port of github.com/luapower/tr which was written in Lua.
+--Leverages harfbuzz, freetype, fribidi and libunibreak.
+--A module for blitting the rasterized text onto a Cairo surface is included.
+
 setfenv(1, require'tr2_env')
+require'tr2_paint_cairo'
 require'tr2_shape'
-require'tr2_wrap'
+require'tr2_linewrap'
 require'tr2_align'
+require'tr2_clip'
+require'tr2_rasterize'
+require'tr2_paint'
 
 --TextRuns -------------------------------------------------------------------
-
 
 function TextRuns.metamethods.__cast(from, to, exp)
 	if from == niltype or from:isunit() then
@@ -45,6 +55,13 @@ function TextRenderer.metamethods.__cast(from, to, exp)
 	if from == niltype or from:isunit() then
 		return quote
 			var self = TextRenderer {
+
+				glyph_cache_size = 1024^2 * 10, --10MB net (arbitrary default)
+				font_size_resolution = 1/8,     --in pixels
+				subpixel_x_resolution = 1/16,   --1/64 pixels is max with freetype
+				subpixel_y_resolution = 1,      --no subpixel positioning with vertical hinting
+
+				glyphs=nil,
 				glyph_runs=nil,
 				cpstack=nil,
 				scripts=nil,
@@ -70,6 +87,7 @@ function TextRenderer.metamethods.__cast(from, to, exp)
 end
 
 terra TextRenderer:free()
+	self.glyphs:free()
 	self.glyph_runs:free()
 	self.cpstack:free()
 	self.scripts:free()
@@ -85,72 +103,4 @@ terra TextRenderer:free()
 	FT_Done_FreeType(self.ft_lib)
 end
 
---test -----------------------------------------------------------------------
-
-terra load_font(self: &Font)
-	var f = fopen('media/fonts/OpenSans-Regular.ttf', 'rb')
-   if f == nil then return false end
-	if fseek(f, 0, SEEK_END) ~= 0 then fclose(f); return false end
-	var size = ftell(f)
-	if size == -1 then fclose(f); return false end
-	rewind(f)
-	self.file_data = new(uint8, size)
-	var ok = fread(self.file_data, 1, size, f) == size
-	if ok then
-		self.file_size = size
-	else
-		self.file_data = nil
-	end
-	fclose(f)
-	return ok
-end
-
-terra unload_font(self: &Font)
-	free(self.file_data)
-	self.file_data = nil
-	self.file_size = 0
-end
-
-terra test()
-	var tr: TextRenderer = nil
-
-	var font: Font
-	fill(&font)
-	font.tr = &tr
-	font.load = load_font
-	font.unload = unload_font
-
-	var runs: TextRuns = nil
-	runs.len = 5
-	runs.codepoints = new(codepoint, 3)
-	runs.codepoints[0] = 65
-	runs.codepoints[1] = 66
-	runs.codepoints[2] = 67
-	var r = TextRun(nil)
-	r.offset = 0
-	r.font = &font
-	r.font_size = 14
-	runs.runs:push(r)
-
-	free(runs.codepoints)
-
-	--[[
-	var run: GlyphRun; fill(&run)
-	var a = arrayof(uint32, 65, 66, 67)
-	run.text = a
-	run.text_len = 3
-	run.font = &font
-	run.font_size = 14
-	run.features = nil
-	run.num_features = 0
-	run.script = HB_SCRIPT_INVALID
-	run.lang = nil
-	run.rtl = false
-
-	var runp = tr:shape_word(&run)
-	assert(runp ~= nil)
-	]]
-
-	tr:free()
-end
-test()
+return tr

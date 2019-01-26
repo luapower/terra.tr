@@ -3,6 +3,11 @@
 
 setfenv(1, require'tr2_env')
 
+--NOTE: this could probably be achieved with a simple for loop and even less
+--conditionals in the loop if you are willing to have some code generated twice.
+--It might be worth making a no-goto version and compare it for speed. Make
+--sure to handle 0, 1 and n-length sequences correctly as this version does.
+
 function rle_iterator(iter)
 	local struct rle_iter { state: iter.state; i: int; j: int }
 	function rle_iter.metamethods.__for(self, body)
@@ -39,7 +44,7 @@ function rle_iterator(iter)
 	return rle_iter
 end
 
-if not ... then
+if not ... then --self-test
 
 	local iter = {}
 	iter.state = arr(int)

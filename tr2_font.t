@@ -1,12 +1,29 @@
 
 setfenv(1, require'tr2_env')
 
+Font.metamethods.__cast = function(from, to, exp)
+	if from == niltype or from:isunit() then
+		return quote
+			var font = Font {}
+			fill(&font)
+			font.ft_load_flags =
+				FT_LOAD_COLOR
+				or FT_LOAD_PEDANTIC
+				--or FT_LOAD_NO_HINTING
+				--or FT_LOAD_NO_AUTOHINT
+				--or FT_LOAD_FORCE_AUTOHINT
+			font.ft_render_flags = FT_RENDER_MODE_LIGHT
+			in font
+		end
+	end
+end
+
 terra Font:ref()
 	if self.refcount == 0 then
 		if not self.load(self) then
 			return false
 		end
-		if not FT_New_Memory_Face(self.tr.ft_lib, [&uint8](self.file_data),
+		if not FT_New_Memory_Face(self.ft_lib, [&uint8](self.file_data),
 			self.file_size, 0, &self.ft_face) == 0
 		then
 			self.unload(self)

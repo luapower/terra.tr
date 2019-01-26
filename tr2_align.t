@@ -1,5 +1,5 @@
 
---Fit a line-wrapped text inside a box.
+--Fit line-wrapped text inside a box.
 
 setfenv(1, require'tr2_env')
 

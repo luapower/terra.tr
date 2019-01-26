@@ -13,7 +13,9 @@ terra GlyphRun:__hash32()
 end
 
 terra GlyphRun:__equal(other: &GlyphRun)
-	return memcmp(self + GlyphRun_key_offset, other + GlyphRun_key_offset, GlyphRun_key_size) == 0
+	return memcmp(
+			self  + GlyphRun_key_offset,
+			other + GlyphRun_key_offset, GlyphRun_key_size) == 0
 		and memcmp(self.text, other.text, self.text_len) == 0
 end
 

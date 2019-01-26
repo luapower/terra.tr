@@ -1,4 +1,6 @@
 
+--Module table & environment with dependencies, enums and types.
+
 local low = require'low'
 
 local tr = {}; setmetatable(tr, tr)
@@ -12,13 +14,20 @@ phf = require'phf'
 fixedfreelist = require'fixedfreelist'
 lrucache = require'lrucache'
 
+function low.includec_loaders.freetype(header)
+	if header:find'^FT_' then
+		return terralib.includecstring([[
+			#include "ft2build.h"
+			#include ]]..header)
+	end
+end
+
 includepath'$L/csrc/harfbuzz/src'
 includepath'$L/csrc/fribidi/src'
 includepath'$L/csrc/libunibreak/src'
 includepath'$L/csrc/freetype/include'
 includepath'$L/csrc/xxhash'
 
-include'stdio.h'
 include'hb.h'
 include'hb-ot.h'
 include'hb-ft.h'
@@ -26,8 +35,10 @@ include'fribidi.h'
 include'linebreak.h'
 include'wordbreak.h'
 include'graphemebreak.h'
-include'ft2build.h'
-include'freetype/freetype.h'
+include'FT_FREETYPE_H'
+include'FT_IMAGE_H'
+include'FT_OUTLINE_H'
+include'FT_BITMAP_H'
 include'xxhash.h'
 
 linklibrary'harfbuzz'
@@ -69,6 +80,31 @@ BREAK_NONE = 0
 BREAK_LINE = 1
 BREAK_PARA = 2
 
+--ft_load_flags from freetype.h (not understood by Terra)
+FT_LOAD_DEFAULT                      = 0
+FT_LOAD_NO_SCALE                     = shl( 1, 0 )
+FT_LOAD_NO_HINTING                   = shl( 1, 1 )
+FT_LOAD_RENDER                       = shl( 1, 2 )
+FT_LOAD_NO_BITMAP                    = shl( 1, 3 )
+FT_LOAD_VERTICAL_LAYOUT              = shl( 1, 4 )
+FT_LOAD_FORCE_AUTOHINT               = shl( 1, 5 )
+FT_LOAD_CROP_BITMAP                  = shl( 1, 6 )
+FT_LOAD_PEDANTIC                     = shl( 1, 7 )
+FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH  = shl( 1, 9 )
+FT_LOAD_NO_RECURSE                   = shl( 1, 10 )
+FT_LOAD_IGNORE_TRANSFORM             = shl( 1, 11 )
+FT_LOAD_MONOCHROME                   = shl( 1, 12 )
+FT_LOAD_LINEAR_DESIGN                = shl( 1, 13 )
+FT_LOAD_NO_AUTOHINT                  = shl( 1, 15 )
+--for FT_LOAD_TARGET_*
+FT_LOAD_COLOR                        = shl( 1, 20 )
+FT_LOAD_COMPUTE_METRICS              = shl( 1, 21 )
+FT_LOAD_BITMAP_METRICS_ONLY          = shl( 1, 22 )
+
+--glyph.ft_bitmap.pixel_mode
+FORMAT_G8    = FT_PIXEL_MODE_GRAY --8-bit gray
+FORMAT_BGRA8 = FT_PIXEL_MODE_BGRA --32-bit BGRA
+
 --types ----------------------------------------------------------------------
 
 codepoint = uint32
@@ -78,7 +114,8 @@ cursor_x_t = num
 struct TextRenderer;
 
 struct Font {
-	tr: &TextRenderer; --for ft_lib
+	ft_lib: FT_Library;
+	tr: &TextRenderer;
 	--loading and unloading
 	file_data: &opaque;
 	file_size: int;
@@ -89,6 +126,7 @@ struct Font {
 	hb_font: &hb_font_t;
 	ft_face: FT_Face;
 	ft_load_flags: int;
+	ft_render_flags: FT_Render_Mode;
 	--font metrics per current size
 	size: num;
 	scale: num; --scaling factor for bitmap fonts
@@ -158,6 +196,8 @@ GlyphRun_key_offset = offsetof(GlyphRun, 'text_len')
 GlyphRun_val_offset = offsetof(GlyphRun, 'hb_buf')
 GlyphRun_key_size = GlyphRun_val_offset - GlyphRun_key_offset
 
+GlyphRunCache = lrucache {key_t = GlyphRun}
+
 struct Line;
 
 struct SubSeg {
@@ -189,6 +229,8 @@ struct Seg {
 	subsegs: arr(SubSeg);
 }
 
+--expose Seg.glyph_run.<field> as Seg.<field> since glyph runs are an
+--implementation detail coming from the fact that we are caching shaped words.
 local props = addproperties(Seg)
 local function fw(prop, field)
 	props[prop] = macro(function(self)
@@ -221,6 +263,7 @@ struct Segs {
 	_min_w: num;
 	_max_w: num;
 	page_h: num;
+	clip_valid: bool;
 }
 
 struct Line {
@@ -254,11 +297,26 @@ struct Lines {
 	clip_valid: bool;
 }
 
-struct Rasterizer {
-
+struct Glyph {
+	--cache key
+	font: &Font
+	font_size: num;
+	glyph_index: int;
+	offset_x: num;
+	offset_y: num;
+	--freetype bitmap
+	ft_bitmap: FT_Bitmap;
+	ft_bitmap_left: int;
+	ft_bitmap_top: int;
+	--graphics surface
+	surface: &opaque;
 }
 
-GlyphRunCache = lrucache {key_t = GlyphRun}
+Glyph_key_offset = offsetof(Glyph, 'font')
+Glyph_val_offset = offsetof(Glyph, 'ft_bitmap')
+Glyph_key_size = Glyph_val_offset - Glyph_key_offset
+
+GlyphCache = lrucache {key_t = Glyph}
 
 struct SegRange {
 	left: &Seg;
@@ -270,8 +328,16 @@ struct SegRange {
 RangesFreelist = fixedfreelist(SegRange)
 
 struct TextRenderer {
+
+	--rasterizer config
+	glyph_cache_size: int;
+	font_size_resolution: num;
+	subpixel_x_resolution: num;
+	subpixel_y_resolution: num;
+
 	ft_lib: FT_Library;
 
+	glyphs: GlyphCache;
 	glyph_runs: GlyphRunCache;
 
 	--temporary arrays that grow as long as the longest input text.
@@ -295,7 +361,6 @@ struct TextRenderer {
 	HB_LANGUAGE_RU: hb_language_t;
 	HB_LANGUAGE_ZH: hb_language_t;
 
-	rasterizer: Rasterizer;
 }
 
 return tr
