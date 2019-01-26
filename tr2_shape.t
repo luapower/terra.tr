@@ -52,12 +52,12 @@ local para_iter = rle_iterator{
 	for_variables = {},
 	declare_variables = function()        return quote var [c0], [c1] end end,
 	save_values       = function()        return quote c0 = c1 end end,
-	load_values       = function(self, i) return quote c1 = self.codepoints[i] end end,
+	load_values       = function(self, i) return quote c1 = self.text.elements[i] end end,
 	values_different  = function()        return `c0 == PS end,
 }
 
 TextRuns.methods.paragraphs = macro(function(self)
-	return `para_iter{&self, 0, self.len}
+	return `para_iter{&self, 0, self.text.len}
 end)
 
 --iterate text segments having the same shaping-relevant properties.
@@ -111,7 +111,7 @@ iter.load_values = function(self, i)
 		if i >= tr_eof then --time to load a new text run
 			inc(tr_index)
 			tr_eof = self.text_runs:eof(tr_index)
-			tr1 = self.text_runs.runs:at(tr_index)
+			tr1 = self.text_runs.array:at(tr_index)
 			tr_diff =
 					tr1.font      ~= tr0.font
 				or tr1.font_size ~= tr0.font_size
@@ -141,18 +141,18 @@ TextRuns.methods.word_runs = macro(function(self, levels, scripts, langs, linebr
 			scripts = scripts,
 			langs = langs,
 			linebreaks = linebreaks
-		}, 0, self.len}
+		}, 0, self.text.len}
 end)
 
 --search for the text run that is spanning over a specific text position.
 
 terra TextRuns:run_index_at_offset(offset: int, i0: int)
-	for i = i0 + 1, self.runs.len do
-		if self.runs:at(i).offset > offset then
+	for i = i0 + 1, self.array.len do
+		if self.array:at(i).offset > offset then
 			return i-1
 		end
 	end
-	return self.runs.len-1
+	return self.array.len-1
 end
 
 --for harfbuzz, language is a IETF BCP 47 language code + country code,
@@ -189,12 +189,12 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	segs._min_w = -1/0
 	segs._max_w =  1/0
 	--segs.lines = false
-	if text_runs.runs.len == 0 then
+	if text_runs.array.len == 0 then
 		return
 	end
 
-	var str = text_runs.codepoints
-	var len = text_runs.len
+	var str = text_runs.text.elements
+	var len = text_runs.text.len
 
 	--script and language detection and assignment
 	assert(self.scripts:preallocate(len))
@@ -203,7 +203,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--script/lang detection is expensive: see if we can avoid it.
 	var do_detect_scripts = false
 	var do_detect_langs = false
-	for run_index, run in text_runs.runs do
+	for run_index, run in text_runs.array do
 		if run.script == HB_SCRIPT_COMMON then do_detect_scripts = true end
 		if run.lang == nil then do_detect_langs = true end
 		if do_detect_scripts and do_detect_langs then break end
@@ -215,7 +215,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	end
 
 	--override scripts with user-provided values.
-	for run_index, run in text_runs.runs do
+	for run_index, run in text_runs.array do
 		if run.script ~= HB_SCRIPT_COMMON then
 			for i = run.offset, text_runs:eof(run_index) do
 				self.scripts.elements[i] = run.script
@@ -231,7 +231,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	end
 
 	--override langs with user-provided values.
-	for run_index, run in text_runs.runs do
+	for run_index, run in text_runs.array do
 		if run.lang ~= nil then
 			for i = run.offset, text_runs:eof(run_index) do
 				self.langs.elements[i] = run.lang
@@ -258,7 +258,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 		var str = str + offset
 
 		text_run_index = text_runs:run_index_at_offset(offset, text_run_index)
-		var text_run = text_runs.runs:at(text_run_index)
+		var text_run = text_runs.array:at(text_run_index)
 
 		--the text run that starts exactly where the paragraph starts can set
 		--the paragraph base direction, otherwise it is auto-detected.
@@ -330,7 +330,6 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 			font         = tr.font;
 			font_size    = tr.font_size;
 			features     = tr.features;
-			num_features = tr.num_features;
 			script = script;
 			lang   = lang;
 			rtl    = odd(level);

@@ -1,21 +1,15 @@
 
 setfenv(1, require'tr2_env')
 
-Font.metamethods.__cast = function(from, to, exp)
-	if from == niltype or from:isunit() then
-		return quote
-			var font = Font {}
-			fill(&font)
-			font.ft_load_flags =
-				FT_LOAD_COLOR
-				or FT_LOAD_PEDANTIC
-				--or FT_LOAD_NO_HINTING
-				--or FT_LOAD_NO_AUTOHINT
-				--or FT_LOAD_FORCE_AUTOHINT
-			font.ft_render_flags = FT_RENDER_MODE_LIGHT
-			in font
-		end
-	end
+terra Font:init()
+	fill(self)
+	self.ft_load_flags =
+		FT_LOAD_COLOR
+		or FT_LOAD_PEDANTIC
+		--or FT_LOAD_NO_HINTING
+		--or FT_LOAD_NO_AUTOHINT
+		--or FT_LOAD_FORCE_AUTOHINT
+	self.ft_render_flags = FT_RENDER_MODE_LIGHT
 end
 
 terra Font:ref()

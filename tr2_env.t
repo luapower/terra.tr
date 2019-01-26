@@ -141,8 +141,7 @@ struct TextRun {
 	offset: int; --offset in the text, in codepoints.
 	font: &Font;
 	font_size: num;
-	features: &hb_feature_t;
-	num_features: int8;
+	features: arr(hb_feature_t);
 	script: hb_script_t;
 	lang: hb_language_t;
 	dir: FriBidiParType; --bidi direction for current and subsequent paragraphs.
@@ -156,23 +155,31 @@ struct TextRun {
 }
 
 struct TextRuns {
-	runs: arr(TextRun);
-	codepoints: &codepoint;
-	len: int; --text length in codepoints.
+	array: arr(TextRun);
+	text: arr(codepoint);
 }
 terra TextRuns:eof(i: int)
-	var following_run = self.runs:at(i + 1)
-	return iif(following_run ~= nil, following_run.offset, self.len)
+	var following_run = self.array:at(i + 1)
+	return iif(following_run ~= nil, following_run.offset, self.text.len)
+end
+
+terra TextRuns:init()
+	fill(self)
+	self.array = nil
+	self.text = nil
+end
+
+terra TextRuns:free()
+	self.text:free()
+	self.array:free()
 end
 
 struct GlyphRun {
 	--cache key fields
-	text: &codepoint;
-	text_len: int16;
+	text: arr(codepoint);
+	features: arr(hb_feature_t);
 	font: &Font;
 	font_size: num;
-	features: &hb_feature_t;
-	num_features: int8;
 	script: hb_script_t;
 	lang: hb_language_t;
 	rtl: bool;
@@ -192,7 +199,7 @@ struct GlyphRun {
 	trailing_space: bool;
 }
 
-GlyphRun_key_offset = offsetof(GlyphRun, 'text_len')
+GlyphRun_key_offset = offsetof(GlyphRun, 'font')
 GlyphRun_val_offset = offsetof(GlyphRun, 'hb_buf')
 GlyphRun_key_size = GlyphRun_val_offset - GlyphRun_key_offset
 
@@ -231,25 +238,9 @@ struct Seg {
 
 --expose Seg.glyph_run.<field> as Seg.<field> since glyph runs are an
 --implementation detail coming from the fact that we are caching shaped words.
-local props = addproperties(Seg)
-local function fw(prop, field)
-	props[prop] = macro(function(self)
-		return `self.[field].[prop]
-	end)
-end
-fw('text'           , 'glyph_run')
-fw('text_len'       , 'glyph_run')
-fw('font'           , 'glyph_run')
-fw('font_size'      , 'glyph_run')
-fw('script'         , 'glyph_run')
-fw('lang'           , 'glyph_run')
-fw('rtl'            , 'glyph_run')
-fw('info'           , 'glyph_run')
-fw('pos'            , 'glyph_run')
-fw('len'            , 'glyph_run')
-fw('cursor_offsets' , 'glyph_run')
-fw('cursor_xs'      , 'glyph_run')
-fw('trailing_space' , 'glyph_run')
+Seg.__entrymissing = macro(function(k, self)
+	return `self.glyph_run[k]
+end)
 
 struct Lines;
 
@@ -265,6 +256,17 @@ struct Segs {
 	page_h: num;
 	clip_valid: bool;
 }
+
+terra Segs:init()
+	fill(self)
+	self.array = nil
+	self.lines.array = nil
+end
+
+terra Segs:free()
+	self.lines.array:free()
+	self.array:free()
+end
 
 struct Line {
 	index: int;

@@ -9,29 +9,33 @@ require'tr2_rle'
 
 terra GlyphRun:__hash32()
 	var h = hash32(self + GlyphRun_key_offset, GlyphRun_key_size, 0)
-	return hash32(self.text, self.text_len, h)
+	h = self.text:__hash32(h)
+	h = self.features:__hash32(h)
 end
 
 terra GlyphRun:__equal(other: &GlyphRun)
 	return memcmp(
 			self  + GlyphRun_key_offset,
 			other + GlyphRun_key_offset, GlyphRun_key_size) == 0
-		and memcmp(self.text, other.text, self.text_len) == 0
+		and self.text == other.text
+		and self.features == other.features
 end
 
 terra GlyphRun:__memsize()
 	return sizeof(GlyphRun)
-		+ sizeof(codepoint) * self.text_len
-		+ (sizeof(cursor_offset_t) + sizeof(cursor_x_t)) * (self.text_len + 1)
+		+ self.text:__memsize()
+		+ self.features:__memsize()
+		+ (sizeof(cursor_offset_t) + sizeof(cursor_x_t)) * (self.text.len + 1)
 		+ (sizeof(hb_glyph_info_t) + sizeof(hb_glyph_position_t)) * self.len
 end
 
 terra GlyphRun:free()
 	hb_buffer_destroy(self.hb_buf)
-	free(self.text)
 	free(self.cursor_xs)
 	free(self.cursor_offsets)
 	self.font:unref()
+	self.text:free()
+	self.features:free()
 	fill(self)
 end
 
@@ -39,9 +43,7 @@ terra GlyphRun:shape()
 	if not self.font:ref() then return false end
 	self.font:setsize(self.font_size)
 
-	var new_text = new(codepoint, self.text_len, false)
-	if new_text == nil then return false end
-	self.text = copy(new_text, self.text, self.text_len)
+	self.text = self.text:copy()
 
 	var hb_dir = iif(self.rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR)
 	self.hb_buf = hb_buffer_create()
@@ -53,8 +55,8 @@ terra GlyphRun:shape()
 	hb_buffer_set_direction(self.hb_buf, hb_dir)
 	hb_buffer_set_script(self.hb_buf, self.script)
 	hb_buffer_set_language(self.hb_buf, self.lang)
-	hb_buffer_add_codepoints(self.hb_buf, self.text, self.text_len, 0, self.text_len)
-	hb_shape(self.font.hb_font, self.hb_buf, self.features, self.num_features)
+	hb_buffer_add_codepoints(self.hb_buf, self.text.elements, self.text.len, 0, self.text.len)
+	hb_shape(self.font.hb_font, self.hb_buf, self.features.elements, self.features.len)
 
 	self.len  = hb_buffer_get_length(self.hb_buf)
 	self.info = hb_buffer_get_glyph_infos(self.hb_buf, nil)
@@ -207,9 +209,9 @@ end
 
 terra GlyphRun:compute_cursors(tr: &TextRenderer)
 
-	self.cursor_offsets = new(int16, self.text_len + 1) --in logical order
-	self.cursor_xs = new(num, self.text_len + 1) --in logical order
-	for i = 0, self.text_len + 1 do
+	self.cursor_offsets = new(int16, self.text.len + 1) --in logical order
+	self.cursor_xs = new(num, self.text.len + 1) --in logical order
+	for i = 0, self.text.len + 1 do
 		self.cursor_offsets[i] = -1 --invalid offset, fixed later
 	end
 
@@ -217,25 +219,25 @@ terra GlyphRun:compute_cursors(tr: &TextRenderer)
 
 	if self.rtl then
 		--add last logical (first visual), after-the-text cursor
-		self.cursor_offsets[self.text_len] = self.text_len
-		self.cursor_xs[self.text_len] = 0
+		self.cursor_offsets[self.text.len] = self.text.len
+		self.cursor_xs[self.text.len] = 0
 		var i: int = -1 --index in glyph_info
 		var n: int --glyph count
 		var c: int --cluster
 		var cn: int --cluster len
 		var cx: num --cluster x
-		c = self.text_len
+		c = self.text.len
 		for i1, n1, c1 in self:cluster_runs() do
 			cx = self:pos_x(i1)
 			if i ~= -1 then
-				self:_add_cursors(tr, i, n, c, cn, cx, self.text, self.text_len)
+				self:_add_cursors(tr, i, n, c, cn, cx, self.text.elements, self.text.len)
 			end
 			var cn1 = c - c1
 			i, n, c, cn = i1, n1, c1, cn1
 		end
 		if i ~= -1 then
 			cx = self.advance_x
-			self:_add_cursors(tr, i, n, c, cn, cx, self.text, self.text_len)
+			self:_add_cursors(tr, i, n, c, cn, cx, self.text.elements, self.text.len)
 		end
 	else
 		var i: int = -1 --index in glyph_info
@@ -245,25 +247,25 @@ terra GlyphRun:compute_cursors(tr: &TextRenderer)
 		for i1, n1, c1 in self:cluster_runs() do
 			if c ~= -1 then
 				var cn = c1 - c
-				self:_add_cursors(tr, i, n, c, cn, cx, self.text, self.text_len)
+				self:_add_cursors(tr, i, n, c, cn, cx, self.text.elements, self.text.len)
 			end
 			var cx1 = self:pos_x(i1)
 			i, n, c, cx = i1, n1, c1, cx1
 		end
 		if i ~= -1 then
-			var cn = self.text_len - c
-			self:_add_cursors(tr, i, n, c, cn, cx, self.text, self.text_len)
+			var cn = self.text.len - c
+			self:_add_cursors(tr, i, n, c, cn, cx, self.text.elements, self.text.len)
 		end
 		--add last logical (last visual), after-the-text cursor
-		self.cursor_offsets[self.text_len] = self.text_len
-		self.cursor_xs[self.text_len] = self.advance_x
+		self.cursor_offsets[self.text.len] = self.text.len
+		self.cursor_xs[self.text.len] = self.advance_x
 	end
 
 	--add cursor offsets for all codepoints which are missing one.
 	if grapheme_breaks ~= nil then --there are clusters with multiple codepoints.
 		var c: int --cluster
 		var x: num --cluster x
-		for i = 0, self.text_len + 1 do
+		for i = 0, self.text.len + 1 do
 			if self.cursor_offsets[i] == -1 then
 				self.cursor_offsets[i] = c
 				self.cursor_xs[i] = x
@@ -278,7 +280,7 @@ terra GlyphRun:compute_cursors(tr: &TextRenderer)
 	var wx = self.advance_x
 	if self.trailing_space then
 		var i = iif(self.rtl, 0, self.len-1)
-		assert(self.info[i].cluster == self.text_len-1)
+		assert(self.info[i].cluster == self.text.len-1)
 		wx = wx - (self:pos_x(i+1) - self:pos_x(i))
 	end
 	self.wrap_advance_x = wx

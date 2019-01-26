@@ -1,24 +1,9 @@
 
 setfenv(1, require'tr2')
 
-require'tr2_paint_cairo'
-
 terra load_font(self: &Font)
-	var f = fopen('media/fonts/OpenSans-Regular.ttf', 'rb')
-   if f == nil then return false end
-	if fseek(f, 0, SEEK_END) ~= 0 then fclose(f); return false end
-	var size = ftell(f)
-	if size == -1 then fclose(f); return false end
-	rewind(f)
-	self.file_data = new(uint8, size)
-	var ok = fread(self.file_data, 1, size, f) == size
-	if ok then
-		self.file_size = size
-	else
-		self.file_data = nil
-	end
-	fclose(f)
-	return ok
+	self.file_data, self.file_size = readfile'media/fonts/OpenSans-Regular.ttf'
+   return self.file_data ~= nil
 end
 
 terra unload_font(self: &Font)
@@ -28,15 +13,15 @@ terra unload_font(self: &Font)
 end
 
 terra test()
-	var tr = TextRenderer(nil)
+	var tr = TextRenderer; tr:init()
 
-	var font = Font(nil)
+	var font: Font; font:init()
 	fill(&font)
 	font.tr = &tr
 	font.load = load_font
 	font.unload = unload_font
 
-	var runs: TextRuns = nil
+	var runs: TextRuns; runs:init()
 	runs.len = 5
 	runs.codepoints = new(codepoint, 3)
 	runs.codepoints[0] = 65
@@ -47,6 +32,12 @@ terra test()
 	r.font = &font
 	r.font_size = 14
 	runs.runs:push(r)
+
+	var segs = Segs(nil)
+
+	tr:shape(&runs, &segs)
+
+	segs:free()
 
 	free(runs.codepoints)
 

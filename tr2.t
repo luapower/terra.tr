@@ -25,28 +25,17 @@ function TextRuns.metamethods.__cast(from, to, exp)
 	end
 end
 
-function TextRun.metamethods.__cast(from, to, exp)
-	if from == niltype or from:isunit() then
-		return `TextRun {
-			offset = 0,
-			font = nil,
-			font_size = 0,
-			features = nil,
-			num_features = 0,
-			script = HB_SCRIPT_COMMON,
-			lang = nil,
-			dir = DIR_AUTO,
-			line_spacing = 1,
-			hardline_spacing = 1,
-			paragraph_spacing = 2,
-			nowrap = false,
-			color = {0, 0, 0, 1},
-			opacity = 1,
-			operator = 0 --CAIRO_OPERATOR_OVER
-		}
-	else
-		error'invalid cast'
-	end
+function TextRun:init()
+	fill(self)
+	self.features:init()
+	self.script = HB_SCRIPT_COMMON
+	self.dir = DIR_AUTO
+	self.line_spacing = 1
+	self.hardline_spacing = 1
+	self.paragraph_spacing = 2
+	self.color = Color {0, 0, 0, 1}
+	self.opacity = 1
+	self.operator = CAIRO_OPERATOR_OVER
 end
 
 --TextRenderer ---------------------------------------------------------------
