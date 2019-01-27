@@ -1,6 +1,8 @@
 
 --Shaping text runs into an array of segments.
 
+if not ... then require'tr2_test'; return end
+
 setfenv(1, require'tr2_env')
 require'tr2_shape_word'
 require'tr2_rle'
@@ -88,11 +90,12 @@ iter.for_variables = {tr0, tr1, level0, script0, lang0}
 
 iter.declare_variables = function(self)
 	return quote
-		var [tr_index] = 0
-		var [tr_eof] = self.text_runs:eof(0)
+		var [tr_index] = -1
+		var [tr_eof] = 0
 		var [tr_diff] = false
 		var [tr0], [level0], [script0], [lang0]
 		var [tr1], [level1], [script1], [lang1]
+		tr0 = nil
 	end
 end
 
@@ -112,8 +115,8 @@ iter.load_values = function(self, i)
 			inc(tr_index)
 			tr_eof = self.text_runs:eof(tr_index)
 			tr1 = self.text_runs.array:at(tr_index)
-			tr_diff =
-					tr1.font      ~= tr0.font
+			tr_diff = tr0 == nil
+				or tr1.font      ~= tr0.font
 				or tr1.font_size ~= tr0.font_size
 				or tr1.features  ~= tr0.features
 		else
@@ -197,8 +200,8 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	var len = text_runs.text.len
 
 	--script and language detection and assignment
-	assert(self.scripts:preallocate(len))
-	assert(self.langs:preallocate(len))
+	assert(self.scripts:setlen(len))
+	assert(self.langs:setlen(len))
 
 	--script/lang detection is expensive: see if we can avoid it.
 	var do_detect_scripts = false
@@ -246,9 +249,9 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--the RTL runs, which harfbuzz also does, and 2) because bidi reordering
 	--needs to be done after line breaking and so it's part of layouting.
 
-	assert(self.bidi_types    :preallocate(len))
-	assert(self.bracket_types :preallocate(len))
-	assert(self.levels        :preallocate(len))
+	assert(self.bidi_types    :setlen(len))
+	assert(self.bracket_types :setlen(len))
+	assert(self.levels        :setlen(len))
 
 	segs.bidi = false --is bidi reordering needed on line-wrapping or not?
 	segs.base_dir = DIR_AUTO --bidi direction of the first paragraph of the text.
@@ -264,8 +267,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 		--the paragraph base direction, otherwise it is auto-detected.
 		var dir = iif(text_run.offset == offset, text_run.dir, DIR_AUTO)
 
-		fribidi_get_bidi_types(str, len,
-			self.bidi_types:at(offset))
+		fribidi_get_bidi_types(str, len, self.bidi_types:at(offset))
 
 		fribidi_get_bracket_types(str, len,
 			self.bidi_types:at(offset),
@@ -292,7 +294,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--NOTE: libunibreak always puts a hard break at the end of the text.
 	--We don't want that so we're passing it one more codepoint than needed.
 
-	self.linebreaks:preallocate(len + 1)
+	self.linebreaks:setlen(len + 1)
 	for offset, len, lang in self:lang_runs(len) do
 		set_linebreaks_utf32(str + offset, len + 1,
 			self:ub_lang(lang), self.linebreaks:at(offset))
@@ -324,17 +326,17 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 			and FRIBIDI_IS_EXPLICIT_OR_BN_OR_WS(self.bidi_types(offset+len-1))
 
 		--shape the seg excluding trailing linebreak chars.
-		var glyph_run = self:shape_word(GlyphRun {
-			text = str;
-			text_len = len;
-			font         = tr.font;
-			font_size    = tr.font_size;
-			features     = tr.features;
-			script = script;
-			lang   = lang;
-			rtl    = odd(level);
+		var gr = GlyphRun {
+			text      = text_runs.text:view(offset, text_runs.text.len);
+			font      = tr.font;
+			font_size = tr.font_size;
+			features  = tr.features;
+			script    = script;
+			lang      = lang;
+			rtl       = odd(level);
 			trailing_space = trailing_space;
-		})
+		}
+		var glyph_run = self:shape_word(gr)
 
 		--UBA codes: 0: required, 1: allowed, 2: not allowed.
 		var linebreak_code = iif(offset > 0, self.linebreaks(offset-1), 2)

@@ -50,11 +50,11 @@ terra Glyph:rasterize()
 		or (ft_glyph.bitmap.pixel_mode ~= FT_PIXEL_MODE_GRAY
 			and ft_glyph.bitmap.pixel_mode ~= FT_PIXEL_MODE_BGRA)
 	then
-		FT_Bitmap_Convert(self.font.ft_lib, &ft_glyph.bitmap, &self.ft_bitmap, 4)
+		FT_Bitmap_Convert(self.font.tr.ft_lib, &ft_glyph.bitmap, &self.ft_bitmap, 4)
 		assert(self.ft_bitmap.pixel_mode == FT_PIXEL_MODE_GRAY)
 		assert((self.ft_bitmap.pitch and 3) == 0)
 	else
-		FT_Bitmap_Copy(self.font.ft_lib, &ft_glyph.bitmap, &self.ft_bitmap)
+		FT_Bitmap_Copy(self.font.tr.ft_lib, &ft_glyph.bitmap, &self.ft_bitmap)
 	end
 
 	self.ft_bitmap_left = round(ft_glyph.bitmap_left * self.font.scale)
@@ -83,7 +83,7 @@ end
 
 terra Glyph:free()
 	self.font.tr:unwrap_glyph(self)
-	FT_Bitmap_Done(self.font.ft_lib, &self.ft_bitmap)
+	FT_Bitmap_Done(self.font.tr.ft_lib, &self.ft_bitmap)
 	self.font:unref()
 end
 

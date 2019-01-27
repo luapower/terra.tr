@@ -15,6 +15,7 @@ function rle_iterator(iter)
 		local advance     = label()
 		local load_values = label()
 		local iterate     = label()
+		local continue    = label()
 		local done        = label()
 		return quote
 				var i = self.i
@@ -35,7 +36,12 @@ function rle_iterator(iter)
 				if first_time then first_time = false; goto [save_values] end
 				if not [ iter.values_different(`self.state, i) ] then goto [advance] end
 			::[iterate]::
-				[ body(i0, `i - i0, unpack(iter.for_variables)) ]
+				while true do --this loop is only to allow `break` to be used in body
+					[ body(i0, `i - i0, unpack(iter.for_variables)) ]
+					goto [continue]
+				end
+				goto [done] --break in body
+			::[continue]::
 				if i == j then goto [done] end
 				goto [save_values]
 			::[done]::

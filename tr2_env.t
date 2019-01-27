@@ -113,14 +113,18 @@ cursor_x_t = num
 
 struct TextRenderer;
 
+struct Font;
+
+font_load_t = {&Font} -> bool
+font_unload_t = {&Font} -> {}
+
 struct Font {
-	ft_lib: FT_Library;
 	tr: &TextRenderer;
 	--loading and unloading
 	file_data: &opaque;
-	file_size: int;
-	load: {&Font} -> bool;
-	unload: {&Font} -> {};
+	file_size: int64;
+	load: font_load_t;
+	unload: font_unload_t;
 	refcount: int;
 	--freetype & harfbuzz font objects
 	hb_font: &hb_font_t;
@@ -154,10 +158,28 @@ struct TextRun {
 	operator: int;   --blending operator (CAIRO_OPERATOR_OVER).
 }
 
+terra TextRun:init()
+	fill(self)
+	self.features:init()
+	self.script = HB_SCRIPT_COMMON
+	self.dir = DIR_AUTO
+	self.line_spacing = 1
+	self.hardline_spacing = 1
+	self.paragraph_spacing = 2
+	self.color = Color {0, 0, 0, 1}
+	self.opacity = 1
+	self.operator = 2 --CAIRO_OPERATOR_OVER
+end
+
+terra TextRun:free()
+	self.features:free()
+end
+
 struct TextRuns {
 	array: arr(TextRun);
 	text: arr(codepoint);
 }
+
 terra TextRuns:eof(i: int)
 	var following_run = self.array:at(i + 1)
 	return iif(following_run ~= nil, following_run.offset, self.text.len)
@@ -165,8 +187,8 @@ end
 
 terra TextRuns:init()
 	fill(self)
-	self.array = nil
-	self.text = nil
+	self.array:init()
+	self.text:init()
 end
 
 terra TextRuns:free()
@@ -174,9 +196,19 @@ terra TextRuns:free()
 	self.array:free()
 end
 
+function TextRuns.metamethods.__cast(from, to, exp)
+	if from == niltype then
+		return quote var t: TextRuns; t:init() in t end
+	else
+		error'invalid cast'
+	end
+end
+
+--GlyphRun, GlyphRunCache, Seg, SubSeg, Line, Lines, Segs --------------------
+
 struct GlyphRun {
 	--cache key fields
-	text: arr(codepoint);
+	text: arr(codepoint).view_type;
 	features: arr(hb_feature_t);
 	font: &Font;
 	font_size: num;
@@ -246,6 +278,7 @@ struct Lines;
 
 struct Segs {
 	array: arr(Seg);
+	tr: &TextRenderer;
 	text_runs: &TextRuns;
 	bidi: bool; --`true` if the text is bidirectional.
 	base_dir: FriBidiParType; --base paragraph direction of the first paragraph
@@ -257,10 +290,11 @@ struct Segs {
 	clip_valid: bool;
 }
 
-terra Segs:init()
+terra Segs:init(tr: &TextRenderer)
 	fill(self)
-	self.array = nil
-	self.lines.array = nil
+	self.tr = tr
+	self.array:init()
+	self.lines.array:init()
 end
 
 terra Segs:free()
@@ -299,6 +333,17 @@ struct Lines {
 	clip_valid: bool;
 }
 
+struct SegRange {
+	left: &Seg;
+	right: &Seg;
+	prev: &SegRange;
+	bidi_level: int8;
+}
+
+RangesFreelist = fixedfreelist(SegRange)
+
+--Glyps ----------------------------------------------------------------------
+
 struct Glyph {
 	--cache key
 	font: &Font
@@ -320,14 +365,7 @@ Glyph_key_size = Glyph_val_offset - Glyph_key_offset
 
 GlyphCache = lrucache {key_t = Glyph}
 
-struct SegRange {
-	left: &Seg;
-	right: &Seg;
-	prev: &SegRange;
-	bidi_level: int8;
-}
-
-RangesFreelist = fixedfreelist(SegRange)
+--TextRenderer ---------------------------------------------------------------
 
 struct TextRenderer {
 

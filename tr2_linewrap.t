@@ -1,6 +1,8 @@
 
 --Line-wrapping a list of segments on a width.
 
+if not ... then require'tr2_test'; return end
+
 setfenv(1, require'tr2_env')
 local reorder_segs = require'tr2_linewrap_reorder'
 
@@ -69,9 +71,9 @@ terra Segs:max_w()
 	return max_w
 end
 
-terra Segs:wrap(w: num, tr: &TextRenderer)
+terra Segs:wrap(w: num)
 
-	var lines = self.lines
+	var lines = &self.lines
 	lines.array:clear()
 	lines.h = 0
 	lines.spaced_h = 0
@@ -82,7 +84,7 @@ terra Segs:wrap(w: num, tr: &TextRenderer)
 
 	--do line wrapping and compute line advance.
 	var seg_i, seg_count = 0, self.array.len
-	var line: &Line
+	var line: &Line = nil
 	while seg_i < seg_count do
 		var segs_wx, segs_ax, next_seg_i = self:nowrap_segments(seg_i)
 
@@ -158,7 +160,7 @@ terra Segs:wrap(w: num, tr: &TextRenderer)
 	if self.bidi then
 		for _,line in lines.array do
 			--UAX#9/L2: reorder segments based on their bidi_level property.
-			line.first_vis = reorder_segs(line.first_vis, &tr.ranges)
+			line.first_vis = reorder_segs(line.first_vis, &self.tr.ranges)
 		end
 	end
 

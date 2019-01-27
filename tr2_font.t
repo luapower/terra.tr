@@ -1,8 +1,11 @@
 
 setfenv(1, require'tr2_env')
 
-terra Font:init()
+terra Font:init(tr: &TextRenderer, load: font_load_t, unload: font_unload_t)
 	fill(self)
+	self.tr = tr
+	self.load = load
+	self.unload = unload
 	self.ft_load_flags =
 		FT_LOAD_COLOR
 		or FT_LOAD_PEDANTIC
@@ -17,8 +20,8 @@ terra Font:ref()
 		if not self.load(self) then
 			return false
 		end
-		if not FT_New_Memory_Face(self.ft_lib, [&uint8](self.file_data),
-			self.file_size, 0, &self.ft_face) == 0
+		if FT_New_Memory_Face(self.tr.ft_lib, [&uint8](self.file_data),
+			self.file_size, 0, &self.ft_face) ~= 0
 		then
 			self.unload(self)
 			return false
