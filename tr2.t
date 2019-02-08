@@ -7,7 +7,6 @@
 --A module for blitting the rasterized text onto a Cairo surface is included.
 
 setfenv(1, require'tr2_env')
-require'tr2_paint_cairo'
 require'tr2_shape'
 require'tr2_linewrap'
 require'tr2_align'

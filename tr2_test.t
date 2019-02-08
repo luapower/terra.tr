@@ -1,4 +1,5 @@
 
+require'tr2_paint_cairo'
 setfenv(1, require'tr2')
 
 terra load_font(self: &Font)
