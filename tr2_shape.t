@@ -333,7 +333,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 			features  = tr.features;
 			script    = script;
 			lang      = lang;
-			rtl       = odd(level);
+			rtl       = isodd(level);
 			trailing_space = trailing_space;
 		}
 		var glyph_run = self:shape_word(gr)
