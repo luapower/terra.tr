@@ -1,11 +1,17 @@
 
---Painting rasterized glyph runs into a cairo surface.
+--Cairo graphics adapter for tr2.
+--Paints (and scales) rasterized glyph runs into a cairo surface.
 
-setfenv(1, require'tr2_env')
+setfenv(1, require'low')
 
 includepath'$L/csrc/cairo/src'
 include'cairo.h'
 linklibrary'cairo'
+
+--the color type depends on the the graphics lib used.
+C.tr2_color_t = tuple(double, double, double, double)
+
+setfenv(1, require'tr2_env')
 
 GraphicsContext = cairo_t
 

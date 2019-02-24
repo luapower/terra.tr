@@ -10,6 +10,9 @@ setfenv(1, tr)
 
 --dependencies ---------------------------------------------------------------
 
+color = tr2_color_t --defined externally
+assert(color, 'require the graphics adapter first, eg. tr2_paint_cairo')
+
 phf = require'phf'
 fixedfreelist = require'fixedfreelist'
 lrucache = require'lrucache'
@@ -104,7 +107,6 @@ FORMAT_BGRA8 = FT_PIXEL_MODE_BGRA --32-bit BGRA
 
 --types ----------------------------------------------------------------------
 
-codepoint = uint32
 cursor_offset_t = int16
 cursor_x_t = num
 
@@ -136,8 +138,6 @@ struct Font {
 	size_changed: {&Font} -> {};
 }
 
-local Color = tuple(double, double, double, double)
-
 struct TextRun {
 	offset: int; --offset in the text, in codepoints.
 	font: &Font;
@@ -150,7 +150,7 @@ struct TextRun {
 	hardline_spacing: num; --line spacing MF for hard-breaked lines (1).
 	paragraph_spacing: num; --paragraph spacing MF (2).
 	nowrap: bool; --disable word wrapping.
-	color: Color;
+	color: color;
 	opacity: double; --the opacity level in 0..1 (1).
 	operator: int;   --blending operator (CAIRO_OPERATOR_OVER).
 }
@@ -163,7 +163,7 @@ terra TextRun:init()
 	self.line_spacing = 1
 	self.hardline_spacing = 1
 	self.paragraph_spacing = 2
-	self.color = Color {0, 0, 0, 1}
+	self.color = color {0, 0, 0, 1}
 	self.opacity = 1
 	self.operator = 2 --CAIRO_OPERATOR_OVER
 end
@@ -363,13 +363,25 @@ Glyph_key_size = Glyph_val_offset - Glyph_key_offset
 
 GlyphCache = lrucache {key_t = Glyph}
 
+--Cursor ---------------------------------------------------------------------
+
+
+
 --Selection ------------------------------------------------------------------
 
 struct Selection {
-	Segs: &Segs;
+	segs: &Segs;
 	offset: int;
 	len: int;
+	color: color;
 }
+
+terra Selection:init(segs: &Segs)
+	self.segs = segs
+	self.offset = 0
+	self.len = 0
+	self.color = color {.4, .4, 0, .4}
+end
 
 --TextRenderer ---------------------------------------------------------------
 
