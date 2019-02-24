@@ -10,7 +10,7 @@ terra Segs:align(x: num, y: num, w: num, h: num, align_x: enum, align_y: enum)
 	if w == -1 then w = lines.max_ax end   --self-box
 	if h == -1 then h = lines.spaced_h end --self-box
 
-	lines.min_x = 1/0
+	lines.min_x = inf
 
 	if align_x == ALIGN_AUTO then
 		    if self.base_dir == DIR_AUTO then align_x = ALIGN_LEFT

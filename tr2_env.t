@@ -56,17 +56,14 @@ end)
 
 --enums ----------------------------------------------------------------------
 
-ALIGN_AUTO = 0 --align_x
-
---align_x
-ALIGN_LEFT = 1
-ALIGN_RIGHT = 2
-ALIGN_CENTER = 3
-
---align_y
-ALIGN_TOP = 1
-ALIGN_BOTTOM = 2
-ALIGN_CENTER = 3
+--NOTE: starting enum values at 1 so that clients can reserve 0 for "default".
+ALIGN_LEFT    = 1
+ALIGN_RIGHT   = 2
+ALIGN_CENTER  = 3
+ALIGN_TOP     = ALIGN_LEFT
+ALIGN_BOTTOM  = ALIGN_RIGHT
+ALIGN_AUTO    = 4 --based on bidi dir
+ALIGN_MAX     = 4
 
 --dir
 DIR_AUTO = FRIBIDI_PAR_ON
@@ -82,15 +79,15 @@ BREAK_PARA = 2
 
 --ft_load_flags from freetype.h (not understood by Terra)
 FT_LOAD_DEFAULT                      = 0
-FT_LOAD_NO_SCALE                     = shl( 1, 0 )
-FT_LOAD_NO_HINTING                   = shl( 1, 1 )
-FT_LOAD_RENDER                       = shl( 1, 2 )
-FT_LOAD_NO_BITMAP                    = shl( 1, 3 )
-FT_LOAD_VERTICAL_LAYOUT              = shl( 1, 4 )
-FT_LOAD_FORCE_AUTOHINT               = shl( 1, 5 )
-FT_LOAD_CROP_BITMAP                  = shl( 1, 6 )
-FT_LOAD_PEDANTIC                     = shl( 1, 7 )
-FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH  = shl( 1, 9 )
+FT_LOAD_NO_SCALE                     = shl( 1,  0 )
+FT_LOAD_NO_HINTING                   = shl( 1,  1 )
+FT_LOAD_RENDER                       = shl( 1,  2 )
+FT_LOAD_NO_BITMAP                    = shl( 1,  3 )
+FT_LOAD_VERTICAL_LAYOUT              = shl( 1,  4 )
+FT_LOAD_FORCE_AUTOHINT               = shl( 1,  5 )
+FT_LOAD_CROP_BITMAP                  = shl( 1,  6 )
+FT_LOAD_PEDANTIC                     = shl( 1,  7 )
+FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH  = shl( 1,  9 )
 FT_LOAD_NO_RECURSE                   = shl( 1, 10 )
 FT_LOAD_IGNORE_TRANSFORM             = shl( 1, 11 )
 FT_LOAD_MONOCHROME                   = shl( 1, 12 )
@@ -178,6 +175,7 @@ end
 struct TextRuns {
 	array: arr(TextRun);
 	text: arr(codepoint);
+	maxlen: int; --TODO: use this
 }
 
 terra TextRuns:eof(i: int)
@@ -364,6 +362,14 @@ Glyph_val_offset = offsetof(Glyph, 'ft_bitmap')
 Glyph_key_size = Glyph_val_offset - Glyph_key_offset
 
 GlyphCache = lrucache {key_t = Glyph}
+
+--Selection ------------------------------------------------------------------
+
+struct Selection {
+	Segs: &Segs;
+	offset: int;
+	len: int;
+}
 
 --TextRenderer ---------------------------------------------------------------
 

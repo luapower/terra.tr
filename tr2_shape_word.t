@@ -125,7 +125,7 @@ local get_ligature_carets = macro(function(
 	return quote
 		var count = hb_ot_layout_get_ligature_carets(hb_font, direction,
 			glyph_index, 0, nil, nil)
-		tr.carets_buffer:setlen(count)
+		tr.carets_buffer:resize(count)
 		var count_buf: uint
 		hb_ot_layout_get_ligature_carets(hb_font, direction, glyph_index,
 			0, &count_buf, tr.carets_buffer.elements)
@@ -157,7 +157,7 @@ terra GlyphRun:_add_cursors(
 	--the cluster is made of multiple codepoints. check how many
 	--graphemes it contains since we need to add additional cursor
 	--positions at each grapheme boundary.
-	tr.grapheme_breaks:setlen(str_len)
+	tr.grapheme_breaks:resize(str_len)
 	var lang = nil --not used in current libunibreak impl.
 	set_graphemebreaks_utf32(str, str_len, lang, tr.grapheme_breaks.elements)
 	var grapheme_count = count_graphemes(tr.grapheme_breaks.elements, cluster, cluster_len)

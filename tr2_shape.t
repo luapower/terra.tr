@@ -189,8 +189,8 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	segs.text_runs = text_runs --for accessing the codepoints (TODO remove?)
 	--remove cached values.
 	segs.lines.array:clear()
-	segs._min_w = -1/0
-	segs._max_w =  1/0
+	segs._min_w = -inf
+	segs._max_w =  inf
 	--segs.lines = false
 	if text_runs.array.len == 0 then
 		return
@@ -200,8 +200,8 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	var len = text_runs.text.len
 
 	--script and language detection and assignment
-	assert(self.scripts:setlen(len))
-	assert(self.langs:setlen(len))
+	assert(self.scripts:resize(len))
+	assert(self.langs:resize(len))
 
 	--script/lang detection is expensive: see if we can avoid it.
 	var do_detect_scripts = false
@@ -249,9 +249,9 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--the RTL runs, which harfbuzz also does, and 2) because bidi reordering
 	--needs to be done after line breaking and so it's part of layouting.
 
-	assert(self.bidi_types    :setlen(len))
-	assert(self.bracket_types :setlen(len))
-	assert(self.levels        :setlen(len))
+	assert(self.bidi_types    :resize(len))
+	assert(self.bracket_types :resize(len))
+	assert(self.levels        :resize(len))
 
 	segs.bidi = false --is bidi reordering needed on line-wrapping or not?
 	segs.base_dir = DIR_AUTO --bidi direction of the first paragraph of the text.
@@ -294,7 +294,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--NOTE: libunibreak always puts a hard break at the end of the text.
 	--We don't want that so we're passing it one more codepoint than needed.
 
-	self.linebreaks:setlen(len + 1)
+	self.linebreaks:resize(len + 1)
 	for offset, len, lang in self:lang_runs(len) do
 		set_linebreaks_utf32(str + offset, len + 1,
 			self:ub_lang(lang), self.linebreaks:at(offset))

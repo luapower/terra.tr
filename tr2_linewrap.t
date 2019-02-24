@@ -34,7 +34,7 @@ end
 --minimum width that the text can wrap into without overflowing.
 terra Segs:min_w()
 	var min_w = self._min_w
-	if min_w == -1/0 then
+	if min_w == -inf then
 		min_w = 0
 		var seg_i, n = 0, self.array.len
 		while seg_i < n do
@@ -50,7 +50,7 @@ end
 --text width when there's no wrapping.
 terra Segs:max_w()
 	var max_w = self._max_w
-	if max_w == 1/0 then
+	if max_w == inf then
 		max_w = 0
 		var line_w = 0
 		var n = self.array.len

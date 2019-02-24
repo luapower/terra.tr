@@ -46,5 +46,5 @@ terra Segs:clip(x: num, y: num, w: num, h: num)
 end
 
 terra Segs:reset_clip()
-	return self:clip(-1/0, -1/0, 1/0, 1/0)
+	return self:clip(-inf, -inf, inf, inf)
 end
