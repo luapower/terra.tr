@@ -1,7 +1,7 @@
 
 --Fit line-wrapped text inside a box.
 
-setfenv(1, require'tr2_env')
+setfenv(1, require'trlib_env')
 
 terra Segs:align(x: num, y: num, w: num, h: num, align_x: enum, align_y: enum)
 

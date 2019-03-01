@@ -9,7 +9,7 @@
 -- in visual order. Following left's `next` member eventually gets us to
 -- `right`. The right seg's `next_vis` member is undefined!
 
-setfenv(1, require'tr2_env')
+setfenv(1, require'trlib_env')
 
 -- Merges range with previous range and returns the previous range.
 local terra merge_range_with_prev(range: &SegRange, ranges: &RangesFreelist)

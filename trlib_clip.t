@@ -1,8 +1,8 @@
 
 --Mark segments as clipped.
 
-setfenv(1, require'tr2_env')
-require'tr2_hit_test'
+setfenv(1, require'trlib_env')
+require'trlib_hit_test'
 
 local overlap_seg = macro(function(ax1, ax2, bx1, bx2) --1D segments overlap test
 	return `not (ax2 < bx1 or bx2 < ax1)

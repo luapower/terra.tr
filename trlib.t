@@ -6,13 +6,14 @@
 --Leverages harfbuzz, freetype, fribidi and libunibreak.
 --A module for blitting the rasterized text onto a Cairo surface is included.
 
-setfenv(1, require'tr2_env')
-require'tr2_shape'
-require'tr2_linewrap'
-require'tr2_align'
-require'tr2_clip'
-require'tr2_rasterize'
-require'tr2_paint'
+local trlib = require'trlib_env'
+setfenv(1, trlib)
+require'trlib_shape'
+require'trlib_linewrap'
+require'trlib_align'
+require'trlib_clip'
+require'trlib_rasterize'
+require'trlib_paint'
 
 terra TextRenderer:init()
 	fill(self)
@@ -57,4 +58,10 @@ terra TextRenderer:free()
 	fill(self)
 end
 
-return tr
+function build(self, opt)
+	public:build{
+		linkto = extend({'freetype', 'harfbuzz', 'fribidi', 'unibreak'}, opt.linkto),
+	}
+end
+
+return trlib

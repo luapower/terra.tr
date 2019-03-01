@@ -1,9 +1,9 @@
 
 --Painting rasterized glyph runs into a cairo surface.
 
-setfenv(1, require'tr2_env')
-require'tr2_clip'
-require'tr2_rasterize'
+setfenv(1, require'trlib_env')
+require'trlib_clip'
+require'trlib_rasterize'
 
 --NOTE: clip_left and clip_right are relative to glyph run's origin.
 terra TextRenderer:paint_glyph_run(

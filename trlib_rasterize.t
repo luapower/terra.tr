@@ -2,8 +2,8 @@
 --Glyph caching & rasterization based on freetype's rasterizer.
 --Written by Cosmin Apreutesei. Public Domain.
 
-setfenv(1, require'tr2_env')
-require'tr2_font'
+setfenv(1, require'trlib_env')
+require'trlib_font'
 
 terra Font:load_glyph(font_size: num, glyph_index: int)
 	self:setsize(font_size)

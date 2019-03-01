@@ -1,11 +1,11 @@
 
 --Shaping a single word into a cached array of glyphs called a glyph run.
 
-if not ... then require'tr2_test'; return end
+if not ... then require'trlib_test'; return end
 
-setfenv(1, require'tr2_env')
-require'tr2_font'
-require'tr2_rle'
+setfenv(1, require'trlib_env')
+require'trlib_font'
+require'trlib_rle'
 
 --interface with the LRU cache
 

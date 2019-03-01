@@ -2,7 +2,7 @@
 --Unicode UAX#24 algorithm for detecting the script property of text runs.
 --Written by Cosmin Apreutesei. Public Domain.
 
-setfenv(1, require'tr2_env')
+setfenv(1, require'trlib_env')
 
 local terra is_combining_mark(funcs: &hb_unicode_funcs_t, c: codepoint)
 	var cat = hb_unicode_general_category(funcs, c)

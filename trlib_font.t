@@ -1,5 +1,5 @@
 
-setfenv(1, require'tr2_env')
+setfenv(1, require'trlib_env')
 
 terra Font:init(tr: &TextRenderer, load: font_load_t, unload: font_unload_t)
 	fill(self)

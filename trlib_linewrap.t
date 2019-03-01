@@ -1,10 +1,10 @@
 
 --Line-wrapping a list of segments on a width.
 
-if not ... then require'tr2_test'; return end
+if not ... then require'trlib_test'; return end
 
-setfenv(1, require'tr2_env')
-local reorder_segs = require'tr2_linewrap_reorder'
+setfenv(1, require'trlib_env')
+local reorder_segs = require'trlib_linewrap_reorder'
 
 --wrap-width and advance-width of all the nowrap segments starting with the
 --segment at seg_i and the seg_i after those segments.

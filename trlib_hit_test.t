@@ -1,5 +1,5 @@
 
-setfenv(1, require'tr2_env')
+setfenv(1, require'trlib_env')
 
 --hit-test the lines array for a line number given a relative(!) y-coord.
 local terra cmp_ys(line1: &Line, line2: &Line)

@@ -1,14 +1,14 @@
 
 --Shaping text runs into an array of segments.
 
-if not ... then require'tr2_test'; return end
+if not ... then require'trlib_test'; return end
 
-setfenv(1, require'tr2_env')
-require'tr2_shape_word'
-require'tr2_rle'
+setfenv(1, require'trlib_env')
+require'trlib_shape_word'
+require'trlib_rle'
 
-local detect_scripts = require'tr2_shape_detect_script'
-local lang_for_script = require'tr2_shape_detect_lang'
+local detect_scripts = require'trlib_shape_detect_script'
+local lang_for_script = require'trlib_shape_detect_lang'
 
 local PS = FRIBIDI_CHAR_PS --paragraph separator codepoint
 local LS = FRIBIDI_CHAR_LS --line separator codepoint

@@ -1,17 +1,13 @@
 
 --Module table & environment with dependencies, enums and types.
 
-local low = require'low'
-
-local tr = {}; setmetatable(tr, tr)
-tr.__index = low
-tr.tr = tr
-setfenv(1, tr)
+local trlib = {__index = require'low'}
+setfenv(1, setmetatable(trlib, trlib))
 
 --dependencies ---------------------------------------------------------------
 
-color = tr2_color_t --defined externally
-assert(color, 'require the graphics adapter first, eg. tr2_paint_cairo')
+color = trlib_color_t --defined externally
+assert(color, 'require the graphics adapter first, eg. trlib_paint_cairo')
 
 phf = require'phf'
 fixedfreelist = require'fixedfreelist'
@@ -421,4 +417,4 @@ struct TextRenderer {
 
 }
 
-return tr
+return trlib

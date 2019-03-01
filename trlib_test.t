@@ -1,6 +1,6 @@
 
-require'tr2_paint_cairo'
-setfenv(1, require'tr2')
+require'trlib_paint_cairo'
+setfenv(1, require'trlib')
 
 terra load_font(self: &Font)
 	self.file_data, self.file_size = readfile'media/fonts/OpenSans-Regular.ttf'

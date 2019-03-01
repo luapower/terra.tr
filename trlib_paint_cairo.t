@@ -1,5 +1,5 @@
 
---Cairo graphics adapter for tr2.
+--Cairo graphics adapter for trlib.
 --Paints (and scales) rasterized glyph runs into a cairo surface.
 
 setfenv(1, require'low')
@@ -9,9 +9,9 @@ include'cairo.h'
 linklibrary'cairo'
 
 --the color type depends on the the graphics lib used.
-C.tr2_color_t = tuple(double, double, double, double)
+C.trlib_color_t = tuple(double, double, double, double)
 
-setfenv(1, require'tr2_env')
+setfenv(1, require'trlib_env')
 
 GraphicsContext = cairo_t
 
@@ -97,4 +97,12 @@ terra TextRenderer:setcontext(cr: &GraphicsContext, text_run: &TextRun)
 	a = a * text_run.opacity
 	cairo_set_source_rgba(cr, r, g, b, a)
 	cairo_set_operator(cr, text_run.operator)
+end
+
+if not ... then
+	local trlib = require'trlib'
+	print'Compiling...'
+	tr2:build{
+		linkto = {'cairo'}
+	}
 end
