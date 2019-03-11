@@ -2,7 +2,7 @@
 --Unicode UAX#24 algorithm for detecting the script property of text runs.
 --Written by Cosmin Apreutesei. Public Domain.
 
-setfenv(1, require'trlib_env')
+setfenv(1, require'trlib_types')
 
 local terra is_combining_mark(funcs: &hb_unicode_funcs_t, c: codepoint)
 	var cat = hb_unicode_general_category(funcs, c)
@@ -56,7 +56,7 @@ end
 --uses UAX#24 Section 5.1 and 5.2 to resolve chars with implicit scripts.
 local terra detect_scripts(tr: &TextRenderer, s: &codepoint, len: int, outbuf: &hb_script_t)
 	var stack = tr.cpstack
-	stack:clear()
+	stack.len = 0
 	var unicode_funcs = hb_unicode_funcs_get_default()
 	var script = HB_SCRIPT_COMMON
 	var base_char_i = 0 --index of base character in combining sequence

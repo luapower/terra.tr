@@ -1,7 +1,7 @@
 
 --Mark segments as clipped.
 
-setfenv(1, require'trlib_env')
+setfenv(1, require'trlib_types')
 require'trlib_hit_test'
 
 local overlap_seg = macro(function(ax1, ax2, bx1, bx2) --1D segments overlap test
@@ -18,9 +18,9 @@ terra Segs:clip(x: num, y: num, w: num, h: num)
 	var lines = self.lines
 	x = x - lines.x
 	y = y - lines.y - lines.baseline
-	var first_visible = lines:line_at_y(y) or 1
-	var last_visible = lines:line_at_y(y + h - 1/256) or 0
-	for line_i = first_visible, last_visible do
+	var first_visible = max(lines:line_at_y(y), 0)
+	var last_visible = min(lines.array.len-1, lines:line_at_y(y + h - 1/256))
+	for line_i = first_visible, last_visible + 1 do
 		var line = lines.array:at(line_i)
 		var bx = line.x
 		var bw = line.advance_x

@@ -1,7 +1,7 @@
 
 --Painting rasterized glyph runs into a cairo surface.
 
-setfenv(1, require'trlib_env')
+setfenv(1, require'trlib_types')
 require'trlib_clip'
 require'trlib_rasterize'
 
@@ -37,14 +37,15 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 		segs:reset_clip()
 	end
 
-	var lines = segs.lines
-	for line_i = lines.first_visible, lines.last_visible do
+	var lines = &segs.lines
+	for line_i = lines.first_visible, lines.last_visible + 1 do
 		var line = lines.array:at(line_i)
 		if line.visible then
 
 			var ax = lines.x + line.x
 			var ay = lines.y + lines.baseline + line.y
 
+			print(line_i, line, line.x, line.first_vis, segs.array.elements, segs.array.len)
 			var seg = line.first_vis
 			while seg ~= nil do
 				if seg.visible then

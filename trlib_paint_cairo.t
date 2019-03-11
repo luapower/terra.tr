@@ -2,16 +2,13 @@
 --Cairo graphics adapter for trlib.
 --Paints (and scales) rasterized glyph runs into a cairo surface.
 
-setfenv(1, require'low')
-
-includepath'$L/csrc/cairo/src'
-include'cairo.h'
-linklibrary'cairo'
-
---the color type depends on the the graphics lib used.
-C.trlib_color_t = tuple(double, double, double, double)
-
 setfenv(1, require'trlib_env')
+require'cairolib'
+color = cairo_argb32_color_t
+GraphicsSurface = cairo_surface_t
+default_color_constant_text      = `color {0x000000ff}
+default_color_constant_selection = `color {0x77770077}
+setfenv(1, require'trlib_types')
 
 GraphicsContext = cairo_t
 
@@ -39,19 +36,17 @@ terra TextRenderer:wrap_glyph(glyph: &Glyph)
 		var bw = glyph.font.size
 		if w ~= bw and h ~= bw then
 			var w1, h1 = box_fit(w, h, bw, bw)
-			var sr0 = [&cairo_surface_t](glyph.surface)
+			var sr0 = glyph.surface; defer sr0:free()
 			var sr1 = cairo_image_surface_create(
 				format,
 				ceil(w1),
 				ceil(h1))
-			var cr = cairo_create(sr1)
-			cairo_translate(cr, glyph.offset_x, glyph.offset_y)
-			cairo_scale(cr, w1 / w, h1 / h)
-			cairo_set_source_surface(cr, sr0, 0, 0)
-			cairo_paint(cr)
-			cairo_set_source_rgb(cr, 0, 0, 0) --release source
-			cairo_destroy(cr)
-			cairo_surface_destroy(sr0)
+			var cr = cairo_create(sr1); defer cr:free()
+			cr:translate(glyph.offset_x, glyph.offset_y)
+			cr:scale(w1 / w, h1 / h)
+			cr:source(sr0, 0, 0)
+			cr:paint()
+			cr:rgb(0, 0, 0) --release source
 			glyph.surface = sr1
 		end
 	end
@@ -59,10 +54,7 @@ terra TextRenderer:wrap_glyph(glyph: &Glyph)
 end
 
 terra TextRenderer:unwrap_glyph(glyph: &Glyph)
-	if glyph.surface ~= nil then
-		cairo_surface_destroy([&cairo_surface_t](glyph.surface))
-		glyph.surface = nil
-	end
+	free(glyph.surface)
 end
 
 --NOTE: clip_left and clip_right are relative to bitmap's left edge.
@@ -73,36 +65,28 @@ terra TextRenderer:paint_glyph(
 	var surface = [&cairo_surface_t](glyph.surface)
 	var clip = clip_left ~= 0 or clip_right ~= 0
 	if clip then
-		cairo_save(cr)
-		cairo_new_path(cr)
+		cr:save()
+		cr:new_path()
 		var x1 = x + clip_left
 		var x2 = x + glyph.ft_bitmap.width + clip_right
-		cairo_rectangle(cr, x1, y, x2 - x1, glyph.ft_bitmap.rows)
-		cairo_clip(cr)
+		cr:rectangle(x1, y, x2 - x1, glyph.ft_bitmap.rows)
+		cr:clip()
 	end
 	if glyph.ft_bitmap.pixel_mode == FORMAT_G8 then
-		cairo_mask_surface(cr, surface, x, y)
+		cr:mask(surface, x, y)
 	else
-		cairo_set_source_surface(cr, surface, x, y)
-		cairo_paint(cr)
-		cairo_set_source_rgb(cr, 0, 0, 0) --clear source
+		cr:source(surface, x, y)
+		cr:paint()
+		cr:rgb(0, 0, 0) --clear source
 	end
 	if clip then
-		cairo_restore(cr)
+		cr:restore()
 	end
 end
 
 terra TextRenderer:setcontext(cr: &GraphicsContext, text_run: &TextRun)
-	var r, g, b, a = text_run.color
-	a = a * text_run.opacity
-	cairo_set_source_rgba(cr, r, g, b, a)
-	cairo_set_operator(cr, text_run.operator)
-end
-
-if not ... then
-	local trlib = require'trlib'
-	print'Compiling...'
-	tr2:build{
-		linkto = {'cairo'}
-	}
+	var c: cairo_color_t = text_run.color --implicit cast
+	c.alpha = c.alpha * text_run.opacity
+	cr:rgba(c)
+	cr:operator(text_run.operator)
 end

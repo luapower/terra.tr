@@ -6,8 +6,7 @@
 --Leverages harfbuzz, freetype, fribidi and libunibreak.
 --A module for blitting the rasterized text onto a Cairo surface is included.
 
-local trlib = require'trlib_env'
-setfenv(1, trlib)
+setfenv(1, require'trlib_types')
 require'trlib_shape'
 require'trlib_linewrap'
 require'trlib_align'
@@ -34,8 +33,8 @@ terra TextRenderer:init()
 	self.carets_buffer:init()
 	self.substack:init()
 	self.ranges:init()
-	assert(self.ranges:preallocate(64))
-	assert(self.cpstack:preallocate(64))
+	self.ranges:preallocate(64)
+	self.cpstack.min_capacity = 64
 	assert(FT_Init_FreeType(&self.ft_lib) == 0)
 	self:init_ub_lang()
 end

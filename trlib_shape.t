@@ -3,7 +3,7 @@
 
 if not ... then require'trlib_test'; return end
 
-setfenv(1, require'trlib_env')
+setfenv(1, require'trlib_types')
 require'trlib_shape_word'
 require'trlib_rle'
 
@@ -170,7 +170,7 @@ terra TextRenderer:init_ub_lang()
 	self.HB_LANGUAGE_ZH = hb_language_from_string('zh', 2)
 end
 
-terra TextRenderer:ub_lang(hb_lang: hb_language_t): cstring
+terra TextRenderer:ub_lang(hb_lang: hb_language_t): rawstring
 	    if hb_lang == self.HB_LANGUAGE_EN then return 'en'
 	elseif hb_lang == self.HB_LANGUAGE_DE then return 'de'
 	elseif hb_lang == self.HB_LANGUAGE_ES then return 'es'
@@ -185,10 +185,10 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	for _,seg in segs.array do
 		seg.subsegs:free()
 	end
-	segs.array:clear()
+	segs.array.len = 0
 	segs.text_runs = text_runs --for accessing the codepoints (TODO remove?)
 	--remove cached values.
-	segs.lines.array:clear()
+	segs.lines.array.len = 0
 	segs._min_w = -inf
 	segs._max_w =  inf
 	--segs.lines = false
@@ -200,8 +200,8 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	var len = text_runs.text.len
 
 	--script and language detection and assignment
-	assert(self.scripts:resize(len))
-	assert(self.langs:resize(len))
+	self.scripts.len = len
+	self.langs.len = len
 
 	--script/lang detection is expensive: see if we can avoid it.
 	var do_detect_scripts = false
@@ -249,9 +249,9 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--the RTL runs, which harfbuzz also does, and 2) because bidi reordering
 	--needs to be done after line breaking and so it's part of layouting.
 
-	assert(self.bidi_types    :resize(len))
-	assert(self.bracket_types :resize(len))
-	assert(self.levels        :resize(len))
+	self.bidi_types    .len = len
+	self.bracket_types .len = len
+	self.levels        .len = len
 
 	segs.bidi = false --is bidi reordering needed on line-wrapping or not?
 	segs.base_dir = DIR_AUTO --bidi direction of the first paragraph of the text.
@@ -294,7 +294,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--NOTE: libunibreak always puts a hard break at the end of the text.
 	--We don't want that so we're passing it one more codepoint than needed.
 
-	self.linebreaks:resize(len + 1)
+	self.linebreaks.len = len + 1
 	for offset, len, lang in self:lang_runs(len) do
 		set_linebreaks_utf32(str + offset, len + 1,
 			self:ub_lang(lang), self.linebreaks:at(offset))
@@ -327,7 +327,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 
 		--shape the seg excluding trailing linebreak chars.
 		var gr = GlyphRun {
-			text      = text_runs.text:view(offset, text_runs.text.len);
+			text      = arr(codepoint);
 			font      = tr.font;
 			font_size = tr.font_size;
 			features  = tr.features;
@@ -336,6 +336,8 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 			rtl       = isodd(level);
 			trailing_space = trailing_space;
 		}
+		assert(gr.text.elements == nil)
+		gr.text.view = arrview(str, len)
 		var glyph_run = self:shape_word(gr)
 
 		--UBA codes: 0: required, 1: allowed, 2: not allowed.
@@ -346,7 +348,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 		if linebreak ~= BREAK_NONE then inc(line_num) end
 
 		if glyph_run ~= nil then --font loaded successfully
-			var seg = segs.array:push_junk()
+			var seg = segs.array:add()
 			assert(seg ~= nil)
 			seg.glyph_run = glyph_run
 			seg.line_num = line_num --physical line number (unused)

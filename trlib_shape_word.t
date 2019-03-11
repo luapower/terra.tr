@@ -3,7 +3,7 @@
 
 if not ... then require'trlib_test'; return end
 
-setfenv(1, require'trlib_env')
+setfenv(1, require'trlib_types')
 require'trlib_font'
 require'trlib_rle'
 
@@ -36,7 +36,7 @@ terra GlyphRun:free()
 	free(self.cursor_xs)
 	free(self.cursor_offsets)
 	self.font:unref()
-	self.text.array:free()
+	self.text:free()
 	self.features:free()
 	fill(self)
 end
@@ -45,9 +45,7 @@ terra GlyphRun:shape()
 	if not self.font:ref() then return false end
 	self.font:setsize(self.font_size)
 
-	var text = self.text:copy()
-	assert(text.len == self.text.len)
-	self.text = text:view(0, text.len)
+	self.text = self.text:copy()
 	self.features = self.features:copy()
 
 	var hb_dir = iif(self.rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR)
@@ -125,7 +123,7 @@ local get_ligature_carets = macro(function(
 	return quote
 		var count = hb_ot_layout_get_ligature_carets(hb_font, direction,
 			glyph_index, 0, nil, nil)
-		tr.carets_buffer:resize(count)
+		tr.carets_buffer.len = count
 		var count_buf: uint
 		hb_ot_layout_get_ligature_carets(hb_font, direction, glyph_index,
 			0, &count_buf, tr.carets_buffer.elements)
@@ -157,7 +155,7 @@ terra GlyphRun:_add_cursors(
 	--the cluster is made of multiple codepoints. check how many
 	--graphemes it contains since we need to add additional cursor
 	--positions at each grapheme boundary.
-	tr.grapheme_breaks:resize(str_len)
+	tr.grapheme_breaks.len = str_len
 	var lang = nil --not used in current libunibreak impl.
 	set_graphemebreaks_utf32(str, str_len, lang, tr.grapheme_breaks.elements)
 	var grapheme_count = count_graphemes(tr.grapheme_breaks.elements, cluster, cluster_len)

@@ -2,15 +2,13 @@
 require'trlib_paint_cairo'
 setfenv(1, require'trlib')
 
-terra load_font(self: &Font)
-	self.file_data, self.file_size = readfile'media/fonts/OpenSans-Regular.ttf'
-	return self.file_data ~= nil
+terra load_font(self: &Font, file_data: &&opaque, file_size: &int64)
+	@file_data, @file_size = readfile'media/fonts/OpenSans-Regular.ttf'
 end
 
-terra unload_font(self: &Font)
-	free(self.file_data)
-	self.file_data = nil
-	self.file_size = 0
+terra unload_font(self: &Font, file_data: &&opaque, file_size: &int64)
+	free(@file_data)
+	@file_size = 0
 end
 
 terra test()

@@ -1,13 +1,13 @@
 
-setfenv(1, require'trlib_env')
+setfenv(1, require'trlib_types')
 
-terra Font:init(tr: &TextRenderer, load: font_load_t, unload: font_unload_t)
+terra Font:init(tr: &TextRenderer, load: FontLoadFunc, unload: FontUnloadFunc)
 	fill(self)
 	self.tr = tr
 	self.load = load
 	self.unload = unload
 	self.ft_load_flags =
-		FT_LOAD_COLOR
+		   FT_LOAD_COLOR
 		or FT_LOAD_PEDANTIC
 		--or FT_LOAD_NO_HINTING
 		--or FT_LOAD_NO_AUTOHINT
@@ -17,19 +17,20 @@ end
 
 terra Font:ref()
 	if self.refcount == 0 then
-		if not self.load(self) then
+		self.load(self, &self.file_data, &self.file_size)
+		if self.file_data == nil then
 			return false
 		end
 		if FT_New_Memory_Face(self.tr.ft_lib, [&uint8](self.file_data),
 			self.file_size, 0, &self.ft_face) ~= 0
 		then
-			self.unload(self)
+			self.unload(self, &self.file_data, &self.file_size)
 			return false
 		end
 		self.hb_font = hb_ft_font_create_referenced(self.ft_face)
 		if self.hb_font == nil then
 			FT_Done_Face(self.ft_face); self.ft_face = nil
-			self.unload(self)
+			self.unload(self, &self.file_data, &self.file_size)
 			return false
 		end
 		hb_ft_font_set_load_flags(self.hb_font, self.ft_load_flags)
@@ -44,7 +45,7 @@ terra Font:unref()
 	if self.refcount == 0 then
 		hb_font_destroy(self.hb_font); self.hb_font = nil
 		FT_Done_Face(self.ft_face); self.ft_face = nil
-		self.unload(self)
+		self.unload(self, &self.file_data, &self.file_size)
 	end
 end
 

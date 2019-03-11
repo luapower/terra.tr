@@ -3,7 +3,7 @@
 
 if not ... then require'trlib_test'; return end
 
-setfenv(1, require'trlib_env')
+setfenv(1, require'trlib_types')
 local reorder_segs = require'trlib_linewrap_reorder'
 
 --wrap-width and advance-width of all the nowrap segments starting with the
@@ -74,7 +74,7 @@ end
 terra Segs:wrap(w: num)
 
 	var lines = &self.lines
-	lines.array:clear()
+	lines.array.len = 0
 	lines.h = 0
 	lines.spaced_h = 0
 	lines.baseline = 0
@@ -113,7 +113,7 @@ terra Segs:wrap(w: num)
 				prev_seg.next_vis = nil
 			end
 
-			line = lines.array:push_junk()
+			line = lines.array:add()
 			line.index = lines.array.len-1
 			line.first = self.array:at(seg_i) --first segment in text order
 			line.first_vis = line.first --first segment in visual order
