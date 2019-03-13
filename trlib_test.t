@@ -1,5 +1,6 @@
 
 require'trlib_paint_cairo'
+require'cairolib'
 setfenv(1, require'trlib')
 
 terra load_font(self: &Font, file_data: &&opaque, file_size: &int64)
@@ -12,6 +13,9 @@ terra unload_font(self: &Font, file_data: &&opaque, file_size: &int64)
 end
 
 terra test()
+	var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1000, 1000)
+	var cr = sr:context()
+
 	var tr: TextRenderer; tr:init()
 
 	var font: Font; font:init(&tr, load_font, unload_font)
@@ -27,14 +31,19 @@ terra test()
 	r.font_size = 14
 	runs.array:push(r)
 
-	var segs: Segs; segs:init(&tr)
-	tr:shape(&runs, &segs)
-	segs:wrap(100)
-	segs:align(0, 0, 100, 100, ALIGN_CENTER, ALIGN_CENTER)
-	print(segs)
+	for i = 1, 3 do
+		var segs: Segs; segs:init(&tr)
+		tr:shape(&runs, &segs)
+		segs:wrap(100)
+		segs:align(0, 0, 100, 100, ALIGN_CENTER, ALIGN_CENTER)
+		tr:paint(cr, &segs)
+		segs:free()
+	end
 
-	segs:free()
 	runs:free()
 	tr:free()
+
+	cr:free()
+	sr:free()
 end
 test()

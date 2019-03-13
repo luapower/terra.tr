@@ -186,12 +186,10 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 		seg.subsegs:free()
 	end
 	segs.array.len = 0
-	segs.text_runs = text_runs --for accessing the codepoints (TODO remove?)
 	--remove cached values.
 	segs.lines.array.len = 0
 	segs._min_w = -inf
 	segs._max_w =  inf
-	--segs.lines = false
 	if text_runs.array.len == 0 then
 		return
 	end
@@ -318,7 +316,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 
 		--find the seg length without trailing linebreak chars.
 		while len > 0 and isnewline(str[len-1]) do
-			len = len - 1
+			dec(len)
 		end
 
 		--find if the seg has a trailing space char.
@@ -369,4 +367,3 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	end
 
 end
-

@@ -56,7 +56,7 @@ terra Font:setsize(size: num)
 	--find the size index closest to input size.
 	var size_index: int
 	var fixed_size = size
-	var found: bool
+	var found = false
 	var best_diff: num = 1.0/0
 	for i = 0, self.ft_face.num_fixed_sizes do
 		var sz = self.ft_face.available_sizes[i]

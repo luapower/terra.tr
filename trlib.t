@@ -16,12 +16,13 @@ require'trlib_paint'
 
 terra TextRenderer:init()
 	fill(self)
-	self.glyph_cache_size = 1024^2 * 10 --10MB net (arbitrary default)
-	self.font_size_resolution = 1/8     --in pixels
-	self.subpixel_x_resolution = 1/16   --1/64 pixels is max with freetype
-	self.subpixel_y_resolution = 1      --no subpixel positioning with vertical hinting
+	self.font_size_resolution  = 1.0/8       --in pixels
+	self.subpixel_x_resolution = 1.0/16      --1/64 pixels is max with freetype
+	self.subpixel_y_resolution = 1.0         --no subpixel positioning with vertical hinting
 	self.glyphs:init()
+	self.glyphs.max_size = 1024^2 * 20 --20MB net (arbitrary default)
 	self.glyph_runs:init()
+	self.glyph_runs.max_size = 1024^2 * 10 --10MB net (arbitrary default)
 	self.cpstack:init()
 	self.scripts:init()
 	self.langs:init()

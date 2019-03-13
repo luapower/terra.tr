@@ -5,7 +5,7 @@ setfenv(1, require'trlib_types')
 
 terra Segs:align(x: num, y: num, w: num, h: num, align_x: enum, align_y: enum)
 
-	var lines = self.lines
+	var lines = &self.lines
 	if lines.array.len == 0 then return self end
 	if w == -1 then w = lines.max_ax end   --self-box
 	if h == -1 then h = lines.spaced_h end --self-box
@@ -32,8 +32,8 @@ terra Segs:align(x: num, y: num, w: num, h: num, align_x: enum, align_y: enum)
 	end
 
 	--compute first line's baseline based on vertical alignment.
-	var first_line = lines.array:at(1)
-	var last_line  = lines.array:at(-1)
+	var first_line = lines.array:at(1, nil)
+	var last_line  = lines.array:at(-1, nil)
 	if first_line == nil then
 		lines.baseline = 0
 	else

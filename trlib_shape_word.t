@@ -9,20 +9,6 @@ require'trlib_rle'
 
 --interface with the LRU cache
 
-terra GlyphRun:__hash32()
-	var h = hash32(self + GlyphRun_key_offset, GlyphRun_key_size, 0)
-	h = self.text:__hash32(h)
-	h = self.features:__hash32(h)
-end
-
-terra GlyphRun:__equal(other: &GlyphRun)
-	return memcmp(
-			self  + GlyphRun_key_offset,
-			other + GlyphRun_key_offset, GlyphRun_key_size) == 0
-		and self.text == other.text
-		and self.features == other.features
-end
-
 terra GlyphRun:__memsize()
 	return sizeof(GlyphRun)
 		+ self.text:__memsize()
@@ -61,9 +47,10 @@ terra GlyphRun:shape()
 	hb_buffer_add_codepoints(self.hb_buf, self.text.elements, self.text.len, 0, self.text.len)
 	hb_shape(self.font.hb_font, self.hb_buf, self.features.elements, self.features.len)
 
-	self.len  = hb_buffer_get_length(self.hb_buf)
-	self.info = hb_buffer_get_glyph_infos(self.hb_buf, nil)
-	self.pos  = hb_buffer_get_glyph_positions(self.hb_buf, nil)
+	var len: uint32
+	self.info = hb_buffer_get_glyph_infos(self.hb_buf, &len)
+	self.pos  = hb_buffer_get_glyph_positions(self.hb_buf, &len)
+	self.len = len
 
 	--1. scale advances and offsets based on `font.scale` (for bitmap fonts).
 	--2. make the advance of each glyph relative to the start of the run

@@ -45,7 +45,6 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 			var ax = lines.x + line.x
 			var ay = lines.y + lines.baseline + line.y
 
-			print(line_i, line, line.x, line.first_vis, segs.array.elements, segs.array.len)
 			var seg = line.first_vis
 			while seg ~= nil do
 				if seg.visible then
@@ -64,7 +63,7 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 					else
 					]]
 					self:setcontext(cr, seg.text_run)
-					self:paint_glyph_run(cr, run, 0, run.len-1, x, y, -1, -1)
+					self:paint_glyph_run(cr, run, 0, run.len, x, y, -1, -1)
 					--end
 
 				end

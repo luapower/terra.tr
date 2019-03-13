@@ -136,7 +136,7 @@ terra Segs:wrap(w: num)
 			seg.x = 0
 			seg.line = line
 			seg.wrapped = false
-			seg.next = self.array:at(seg_i+1)
+			seg.next = self.array:at(seg_i+1, nil)
 			seg.next_vis = seg.next
 		end
 

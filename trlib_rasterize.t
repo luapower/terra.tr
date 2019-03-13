@@ -67,16 +67,6 @@ end
 
 --glyph LRU cache
 
-terra Glyph:__hash32()
-	return hash32(self + Glyph_key_offset, Glyph_key_size, 0)
-end
-
-terra Glyph:__equal(other: &Glyph)
-	return memcmp(
-		self  + Glyph_key_offset,
-		other + Glyph_key_offset, Glyph_key_size) == 0
-end
-
 terra Glyph:__memsize()
 	return sizeof(Glyph) + self.ft_bitmap.rows * self.ft_bitmap.pitch
 end
@@ -112,10 +102,10 @@ terra TextRenderer:rasterize_glyph(
 	if pair == nil then
 		glyph:rasterize()
 		pair = self.glyphs:put(glyph, true)
+		assert(pair ~= nil)
 	end
 	var glyph_ref = &pair.key
 	var x = pixel_x + glyph_ref.ft_bitmap_left
 	var y = pixel_y - glyph_ref.ft_bitmap_top
 	return glyph_ref, x, y
 end
-
