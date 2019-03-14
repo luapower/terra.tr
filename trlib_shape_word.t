@@ -31,9 +31,11 @@ terra GlyphRun:shape()
 	if not self.font:ref() then return false end
 	self.font:setsize(self.font_size)
 
+	print('shape/copy', self.text, self.features)
 	self.text = self.text:copy()
 	self.features = self.features:copy()
 
+	print('shape/hb create', self.text, self.features)
 	var hb_dir = iif(self.rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR)
 	self.hb_buf = hb_buffer_create()
 	hb_buffer_set_cluster_level(self.hb_buf,
@@ -45,13 +47,22 @@ terra GlyphRun:shape()
 	hb_buffer_set_script(self.hb_buf, self.script)
 	hb_buffer_set_language(self.hb_buf, self.lang)
 	hb_buffer_add_codepoints(self.hb_buf, self.text.elements, self.text.len, 0, self.text.len)
+	print('shape/hb shape',
+		self.hb_buf, @self.font,
+		self.text.elements, self.text.len
+		--self.text.elements[0], self.text.elements[1],
+		--self.script, self.lang
+		--self.features.elements, self.features.len
+		)
 	hb_shape(self.font.hb_font, self.hb_buf, self.features.elements, self.features.len)
+	print'shape/hb shape done'
 
 	var len: uint32
 	self.info = hb_buffer_get_glyph_infos(self.hb_buf, &len)
 	self.pos  = hb_buffer_get_glyph_positions(self.hb_buf, &len)
 	self.len = len
 
+	print('shape/compute advances', len)
 	--1. scale advances and offsets based on `font.scale` (for bitmap fonts).
 	--2. make the advance of each glyph relative to the start of the run
 	--   so that pos_x() is O(1) for any index.
@@ -278,11 +289,18 @@ end
 
 terra TextRenderer:shape_word(glyph_run: GlyphRun)
 	--get the shaped run from cache or shape it and cache it.
+	print'shape_word/get'
 	var pair = self.glyph_runs:get(glyph_run)
+	print('shape_word/got', pair)
 	if pair == nil then
+		print'shape_word/shaping'
 		if not glyph_run:shape() then return nil end
+		--print'shape_word/computing cursors'
 		glyph_run:compute_cursors(self)
+		print('shape_word/putting')
 		pair = self.glyph_runs:put(glyph_run, true)
+		assert(pair~= nil)
+		print('shape_word/put')
 	end
 	return &pair.key
 end

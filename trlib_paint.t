@@ -8,7 +8,7 @@ require'trlib_rasterize'
 --NOTE: clip_left and clip_right are relative to glyph run's origin.
 terra TextRenderer:paint_glyph_run(
 	cr: &GraphicsContext, run: &GlyphRun, i: int, j: int,
-	ax: num, ay: num, clip_left: num, clip_right: num
+	ax: num, ay: num, clip: bool, clip_left: num, clip_right: num
 )
 	for i = i, j do
 
@@ -23,11 +23,15 @@ terra TextRenderer:paint_glyph_run(
 			ay - oy
 		)
 
-		--make clip_left and clip_right relative to bitmap's left edge.
-		clip_left = iif(clip_left ~= -1, clip_left + ax - bmpx, 0)
-		clip_right = iif(clip_right ~= -1, clip_right + ax - bmpx, 0)
-
-		self:paint_glyph(cr, glyph, bmpx, bmpy, clip_left, clip_right)
+		if glyph.ft_bitmap.buffer ~= nil then
+			--make clip_left and clip_right relative to bitmap's left edge.
+			if clip then
+				clip_left  = clip_left + ax - bmpx
+				clip_right = clip_right + ax - bmpx
+			end
+			print('paint_glyph', i, bmpx, bmpy, clip, clip_left, clip_right)
+			self:paint_glyph(cr, glyph, bmpx, bmpy, clip, clip_left, clip_right)
+		end
 	end
 end
 
@@ -39,6 +43,7 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 
 	var lines = &segs.lines
 	for line_i = lines.first_visible, lines.last_visible + 1 do
+		print('paint line', line_i, lines.array.len)
 		var line = lines.array:at(line_i)
 		if line.visible then
 
@@ -52,18 +57,21 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 					var run = seg.glyph_run
 					var x, y = ax + seg.x, ay
 
+
 					--[[
 					--TODO: subsegments
 					if #seg > 0 then --has sub-segments, paint them separately
 						for i = 1, #seg, 5 do
 							var i, j, text_run, clip_left, clip_right = unpack(seg, i, i + 4)
 							rs:setcontext(cr, text_run)
-							paint_glyph_run(cr, rs, run, i, j, x, y, clip_left, clip_right)
+							paint_glyph_run(cr, rs, run, i, j, x, y, true, clip_left, clip_right)
 						end
 					else
 					]]
+
 					self:setcontext(cr, seg.text_run)
-					self:paint_glyph_run(cr, run, 0, run.len, x, y, -1, -1)
+					print('paint seg', @seg)
+					self:paint_glyph_run(cr, run, 0, run.len, x, y, false, 0, 0)
 					--end
 
 				end

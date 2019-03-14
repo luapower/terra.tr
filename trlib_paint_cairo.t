@@ -25,7 +25,7 @@ terra TextRenderer:wrap_glyph(glyph: &Glyph)
 	var w = glyph.ft_bitmap.width
 	var h = glyph.ft_bitmap.rows
 
-	var format = iif(glyph.ft_bitmap.pixel_mode == FORMAT_G8,
+	var format = iif(glyph.ft_bitmap.pixel_mode == FT_PIXEL_MODE_GRAY,
 		CAIRO_FORMAT_A8, CAIRO_FORMAT_ARGB32)
 
 	glyph.surface = cairo_image_surface_create_for_data(
@@ -54,16 +54,15 @@ terra TextRenderer:wrap_glyph(glyph: &Glyph)
 end
 
 terra TextRenderer:unwrap_glyph(glyph: &Glyph)
-	free(glyph.surface)
+	glyph.surface:free()
+	glyph.surface = nil
 end
 
 --NOTE: clip_left and clip_right are relative to bitmap's left edge.
 terra TextRenderer:paint_glyph(
 	cr: &GraphicsContext, glyph: &Glyph,
-	x: num, y: num, clip_left: num, clip_right: num
+	x: num, y: num, clip: bool, clip_left: num, clip_right: num
 )
-	var surface = [&cairo_surface_t](glyph.surface)
-	var clip = clip_left ~= 0 or clip_right ~= 0
 	if clip then
 		cr:save()
 		cr:new_path()
@@ -72,10 +71,11 @@ terra TextRenderer:paint_glyph(
 		cr:rectangle(x1, y, x2 - x1, glyph.ft_bitmap.rows)
 		cr:clip()
 	end
-	if glyph.ft_bitmap.pixel_mode == FORMAT_G8 then
-		cr:mask(surface, x, y)
+	if glyph.ft_bitmap.pixel_mode == FT_PIXEL_MODE_GRAY then
+		--print('paint_glypu/mask', glyph.surface, x, y)
+		cr:mask(glyph.surface, x, y)
 	else
-		cr:source(surface, x, y)
+		cr:source(glyph.surface, x, y)
 		cr:paint()
 		cr:rgb(0, 0, 0) --clear source
 	end

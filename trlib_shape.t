@@ -334,8 +334,8 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 			rtl       = isodd(level);
 			trailing_space = trailing_space;
 		}
-		assert(gr.text.elements == nil)
 		gr.text.view = arrview(str, len)
+		print(gr.text.view.elements, gr.text.view.len)
 		var glyph_run = self:shape_word(gr)
 
 		--UBA codes: 0: required, 1: allowed, 2: not allowed.
@@ -347,7 +347,6 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 
 		if glyph_run ~= nil then --font loaded successfully
 			var seg = segs.array:add()
-			assert(seg ~= nil)
 			seg.glyph_run = glyph_run
 			seg.line_num = line_num --physical line number (unused)
 			seg.linebreak = linebreak --for line breaking
@@ -362,6 +361,7 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 			seg.line = nil
 			seg.wrapped = false --seg is the last on a wrapped line
 			seg.visible = true --seg is not entirely clipped
+			seg.subsegs:init()
 		end
 
 	end

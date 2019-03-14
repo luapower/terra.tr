@@ -32,19 +32,17 @@ terra Segs:align(x: num, y: num, w: num, h: num, align_x: enum, align_y: enum)
 	end
 
 	--compute first line's baseline based on vertical alignment.
-	var first_line = lines.array:at(1, nil)
+	var first_line = lines.array:at( 0, nil)
 	var last_line  = lines.array:at(-1, nil)
 	if first_line == nil then
 		lines.baseline = 0
 	else
 		if align_y == ALIGN_TOP then
 			lines.baseline = first_line.spaced_ascent
-		else
-			if align_y == ALIGN_BOTTOM then
-				lines.baseline = h - (last_line.y - last_line.spaced_descent)
-			elseif align_y == ALIGN_CENTER then
-				lines.baseline = first_line.spaced_ascent + (h - lines.spaced_h) / 2
-			end
+		elseif align_y == ALIGN_BOTTOM then
+			lines.baseline = h - (last_line.y - last_line.spaced_descent)
+		elseif align_y == ALIGN_CENTER then
+			lines.baseline = first_line.spaced_ascent + (h - lines.spaced_h) / 2
 		end
 	end
 

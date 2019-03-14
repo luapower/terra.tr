@@ -92,16 +92,19 @@ terra TextRenderer:rasterize_glyph(
 	var offset_x = snap(x - pixel_x, self.subpixel_x_resolution)
 	var offset_y = snap(y - pixel_y, self.subpixel_y_resolution)
 	var glyph = Glyph {
-		font = font,
-		font_size = font_size,
-		glyph_index = glyph_index,
-		offset_x = offset_x,
-		offset_y = offset_y
+		font = font;
+		font_size = font_size;
+		glyph_index = glyph_index;
+		offset_x = offset_x;
+		offset_y = offset_y;
 	}
+	print('rasterize_glyph/get')
 	var pair = self.glyphs:get(glyph)
+	print('rasterize_glyph/got', pair)
 	if pair == nil then
 		glyph:rasterize()
 		pair = self.glyphs:put(glyph, true)
+		print('rasterize_glyph/put', @pair)
 		assert(pair ~= nil)
 	end
 	var glyph_ref = &pair.key
