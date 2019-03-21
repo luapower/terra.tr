@@ -11,32 +11,11 @@ phf = require'phf'
 fixedfreelist = require'fixedfreelist'
 lrucache = require'lrucache'
 
-function low.includec_loaders.freetype(header)
-	if header:find'^FT_' then
-		return terralib.includecstring([[
-			#include "ft2build.h"
-			#include ]]..header)
-	end
-end
-
-includepath'$L/csrc/harfbuzz/src'
-includepath'$L/csrc/fribidi/src'
-includepath'$L/csrc/libunibreak/src'
-includepath'$L/csrc/freetype/include'
-includepath'$L/csrc/xxhash'
-
-include'hb.h'
-include'hb-ot.h'
-include'hb-ft.h'
-include'fribidi.h'
-include'linebreak.h'
-include'wordbreak.h'
-include'graphemebreak.h'
-include'FT_FREETYPE_H'
-include'FT_IMAGE_H'
-include'FT_OUTLINE_H'
-include'FT_BITMAP_H'
-include'xxhash.h'
+require_h'freetype_h'
+require_h'harfbuzz_h'
+require_h'fribidi_h'
+require_h'libunibreak_h'
+require_h'xxhash_h'
 
 linklibrary'harfbuzz'
 linklibrary'fribidi'
@@ -47,7 +26,7 @@ linklibrary'xxhash'
 --replace the default hash function with faster xxhash.
 memhash = macro(function(size_t, k, h, len)
 	local size_t = size_t:astype()
-	local T = assert(k:gettype().type, 'pointer expected, got ', k:gettype())
+	local T = k:getpointertype()
 	local len = len or 1
 	local xxh = sizeof(size_t) == 8 and XXH64 or XXH32
 	return `[size_t](xxh([&opaque](k), len * sizeof(T), h))
@@ -76,31 +55,6 @@ BREAK_NONE = 0
 BREAK_LINE = 1
 BREAK_PARA = 2
 
---ft_load_flags from freetype.h (not understood by Terra)
-FT_LOAD_DEFAULT                      = 0
-FT_LOAD_NO_SCALE                     = shl( 1,  0 )
-FT_LOAD_NO_HINTING                   = shl( 1,  1 )
-FT_LOAD_RENDER                       = shl( 1,  2 )
-FT_LOAD_NO_BITMAP                    = shl( 1,  3 )
-FT_LOAD_VERTICAL_LAYOUT              = shl( 1,  4 )
-FT_LOAD_FORCE_AUTOHINT               = shl( 1,  5 )
-FT_LOAD_CROP_BITMAP                  = shl( 1,  6 )
-FT_LOAD_PEDANTIC                     = shl( 1,  7 )
-FT_LOAD_IGNORE_GLOBAL_ADVANCE_WIDTH  = shl( 1,  9 )
-FT_LOAD_NO_RECURSE                   = shl( 1, 10 )
-FT_LOAD_IGNORE_TRANSFORM             = shl( 1, 11 )
-FT_LOAD_MONOCHROME                   = shl( 1, 12 )
-FT_LOAD_LINEAR_DESIGN                = shl( 1, 13 )
-FT_LOAD_NO_AUTOHINT                  = shl( 1, 15 )
---for FT_LOAD_TARGET_*
-FT_LOAD_COLOR                        = shl( 1, 20 )
-FT_LOAD_COMPUTE_METRICS              = shl( 1, 21 )
-FT_LOAD_BITMAP_METRICS_ONLY          = shl( 1, 22 )
-
---glyph.ft_bitmap.pixel_mode
-FORMAT_G8    = FT_PIXEL_MODE_GRAY --8-bit gray
-FORMAT_BGRA8 = FT_PIXEL_MODE_BGRA --32-bit BGRA
-
 --types ----------------------------------------------------------------------
 
 cursor_offset_t = int16
@@ -112,7 +66,6 @@ struct Font;
 
 FontLoadFunc   = {&Font, &&opaque, &int64} -> {}
 FontUnloadFunc = {&Font, &&opaque, &int64} -> {}
-
 FontLoadFunc  .__typename_ffi = 'FontLoadFunc'
 FontUnloadFunc.__typename_ffi = 'FontUnloadFunc'
 
@@ -176,7 +129,7 @@ end
 struct TextRuns {
 	array: arr(TextRun);
 	text: arr(codepoint);
-	maxlen: int; --TODO: use this
+	maxlen: int;
 }
 
 terra TextRuns:eof(i: int)
@@ -192,6 +145,7 @@ end
 
 terra TextRuns:free()
 	self.text:free()
+	self.array:call'free'
 	self.array:free()
 end
 

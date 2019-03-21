@@ -13,9 +13,9 @@ terra TextRenderer:paint_glyph_run(
 	for i = i, j do
 
 		var glyph_index = run.info[i].codepoint
-		var px = iif(i > 0, run.pos[i-1].x_advance / 64, 0)
-		var ox = run.pos[i].x_offset / 64
-		var oy = run.pos[i].y_offset / 64
+		var px = iif(i > 0, run.pos[i-1].x_advance / 64.0, 0.0)
+		var ox = run.pos[i].x_offset / 64.0
+		var oy = run.pos[i].y_offset / 64.0
 
 		var glyph, bmpx, bmpy = self:rasterize_glyph(
 			run.font, run.font_size, glyph_index,
@@ -24,8 +24,8 @@ terra TextRenderer:paint_glyph_run(
 		)
 
 		if glyph.ft_bitmap.buffer ~= nil then
-			--make clip_left and clip_right relative to bitmap's left edge.
 			if clip then
+				--make clip_left and clip_right relative to bitmap's left edge.
 				clip_left  = clip_left + ax - bmpx
 				clip_right = clip_right + ax - bmpx
 			end
@@ -56,7 +56,6 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 
 					var run = seg.glyph_run
 					var x, y = ax + seg.x, ay
-
 
 					--[[
 					--TODO: subsegments

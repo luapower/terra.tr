@@ -36,7 +36,7 @@ terra Font:ref()
 		hb_ft_font_set_load_flags(self.hb_font, self.ft_load_flags)
 	end
 	inc(self.refcount)
-	--print('font/ref', self.refcount, self.ft_face, self.hb_font, self.ft_load_flags)
+	print('font/ref', self.refcount, self.ft_face, self.hb_font, self.ft_load_flags)
 	return true
 end
 
@@ -48,7 +48,7 @@ terra Font:unref()
 		FT_Done_Face(self.ft_face); self.ft_face = nil
 		self.unload(self, &self.file_data, &self.file_size)
 	end
-	--print('font/unref', self.refcount)
+	print('font/unref', self.refcount)
 end
 
 terra Font:setsize(size: num)

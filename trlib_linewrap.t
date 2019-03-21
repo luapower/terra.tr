@@ -125,6 +125,7 @@ terra Segs:wrap(w: num)
 			line.spaced_ascent = 0
 			line.spaced_descent = 0
 			line.visible = true --entirely clipped or not
+			line.spacing = 1
 
 		end
 

@@ -13,10 +13,9 @@ terra unload_font(self: &Font, file_data: &&opaque, file_size: &int64)
 end
 
 terra test()
-	var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1000, 1000)
-	var cr = sr:context()
-
-	var tr: TextRenderer; tr:init()
+	var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1000, 1000); defer sr:free()
+	var cr = sr:context(); defer cr:free()
+	var tr: TextRenderer; tr:init(); defer tr:free()
 	print('tr.glyph_runs.max_size', tr.glyph_runs.max_size)
 
 	var font: Font; font:init(&tr, load_font, unload_font)
@@ -53,9 +52,5 @@ terra test()
 	pfn('GlyphRun cache count : %d', tr.glyph_runs.count)
 
 	runs:free()
-	tr:free()
-
-	cr:free()
-	sr:free()
 end
 test()
