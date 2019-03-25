@@ -8,13 +8,16 @@ local reorder_segs = require'trlib_linewrap_reorder'
 
 --wrap-width and advance-width of all the nowrap segments starting with the
 --segment at seg_i and the seg_i after those segments.
+--wrap-width == advance-width when it's a hard break or when it's the last
+--segment (which implies a hard break), otherwise it's advance-width minus
+--the width of the last trailing space.
 terra Segs:nowrap_segments(seg_i: int)
 	var seg = self.array:at(seg_i)
 	if not seg.text_run.nowrap then
 		var wx = seg.glyph_run.wrap_advance_x
 		var ax = seg.glyph_run.advance_x
 		wx = iif(seg.linebreak ~= BREAK_NONE or seg_i == self.array.len-1, ax, wx)
-		return wx, ax, seg_i + 1
+		return wx, ax, seg_i+1
 	end
 	var ax = 0
 	var n = self.array.len
@@ -22,10 +25,10 @@ terra Segs:nowrap_segments(seg_i: int)
 		var seg = self.array(i)
 		var ax1 = ax + seg.glyph_run.advance_x
 		if i == n-1 or seg.linebreak ~= BREAK_NONE then --hard break, w == ax
-			return ax1, ax1, i + 1
+			return ax1, ax1, i+1
 		elseif i < n-1 and not self.array(i+1).text_run.nowrap then
 			var wx = ax + seg.glyph_run.wrap_advance_x
-			return wx, ax1, i + 1
+			return wx, ax1, i+1
 		end
 		ax = ax1
 	end
@@ -95,9 +98,10 @@ terra Segs:wrap(w: num)
 
 		if hardbreak or softbreak then
 
-			var prev_seg = self.array:at(seg_i-1) --last segment of the previous line
+			var prev_seg = self.array:at(seg_i-1, nil) --last segment of the previous line
 
 			--adjust last segment due to being wrapped.
+			--we can do this because the last segment stays last under bidi reordering.
 			if softbreak then
 				var prev_run = prev_seg.glyph_run
 				line.advance_x = line.advance_x - prev_seg.advance_x
@@ -135,7 +139,6 @@ terra Segs:wrap(w: num)
 			var seg = self.array:at(seg_i)
 			seg.advance_x = seg.glyph_run.advance_x
 			seg.x = 0
-			seg.line = line
 			seg.wrapped = false
 			seg.next = self.array:at(seg_i+1, nil)
 			seg.next_vis = seg.next
@@ -204,9 +207,9 @@ terra Segs:wrap(w: num)
 		last_line = line
 	end
 
-	var first_line = lines.array:at(0)
+	var first_line = lines.array:at(0, nil)
 	if first_line ~= nil then
-		var last_line = lines.array:at(-1)
+		var last_line = lines.array:at(lines.array.len-1)
 		--compute the bounding-box height excluding paragraph spacing.
 		lines.h =
 			first_line.ascent

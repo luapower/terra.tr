@@ -79,8 +79,8 @@ local terra detect_scripts(tr: &TextRenderer, s: &codepoint, len: int, outbuf: &
 				var ispair, pair, open = pair(c)
 				if ispair then
 					if open then --remember the enclosing script
-						assert(stack:push(script) ~= -1)
-						assert(stack:push(pair) ~= -1)
+						stack:push(script)
+						stack:push(pair)
 					else --restore the enclosing script
 						for i = stack.len-1, -1, -2 do
 							if stack(i) == pair then --pair opened here

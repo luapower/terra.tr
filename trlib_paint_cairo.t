@@ -2,15 +2,16 @@
 --Cairo graphics adapter for trlib.
 --Paints (and scales) rasterized glyph runs into a cairo surface.
 
+if not ... then require'trlib_test'; return end
+
 setfenv(1, require'trlib_env')
 require'cairolib'
 color = cairo_argb32_color_t
-GraphicsSurface = cairo_surface_t
 default_color_constant_text      = `color {0x000000ff}
 default_color_constant_selection = `color {0x77770077}
-setfenv(1, require'trlib_types')
-
+GlyphSurface = cairo_surface_t
 GraphicsContext = cairo_t
+setfenv(1, require'trlib_types')
 
 terra box_fit(w: num, h: num, bw: num, bh: num)
 	if w / h > bw / bh then
@@ -20,42 +21,54 @@ terra box_fit(w: num, h: num, bw: num, bh: num)
 	end
 end
 
-terra TextRenderer:wrap_glyph(glyph: &Glyph)
+terra TextRenderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 
-	var w = glyph.ft_bitmap.width
-	var h = glyph.ft_bitmap.rows
+	var w = bmp.width
+	var h = bmp.rows
 
-	var format = iif(glyph.ft_bitmap.pixel_mode == FT_PIXEL_MODE_GRAY,
+	var format = iif(bmp.pixel_mode == FT_PIXEL_MODE_GRAY,
 		CAIRO_FORMAT_A8, CAIRO_FORMAT_ARGB32)
 
-	glyph.surface = cairo_image_surface_create_for_data(
-		glyph.ft_bitmap.buffer, format, w, h, glyph.ft_bitmap.pitch)
+	var sr0 = cairo_image_surface_create_for_data(
+		bmp.buffer, format, w, h, bmp.pitch)
 
-	--scale raster glyphs which freetype cannot scale by itglyph.
-	if glyph.font.scale ~= 1 then
-		var bw = glyph.font.size
-		if w ~= bw and h ~= bw then
-			var w1, h1 = box_fit(w, h, bw, bw)
-			var sr0 = glyph.surface; defer sr0:free()
-			var sr1 = cairo_image_surface_create(
-				format,
-				ceil(w1),
-				ceil(h1))
-			var cr = cairo_create(sr1); defer cr:free()
-			cr:translate(glyph.offset_x, glyph.offset_y)
-			cr:scale(w1 / w, h1 / h)
+	var font = self.fonts:at(glyph.font_id)
+	if font.scale ~= 1 then
+		--scale raster glyphs which freetype cannot scale by itself.
+		var bw = font.size
+		var w1, h1 = box_fit(w, h, bw, bw)
+		var sr = cairo_image_surface_create(format, ceil(w1), ceil(h1))
+		var cr = cairo_create(sr)
+		cr:translate(glyph.offset_x, 0)
+		cr:scale(w1 / w, h1 / h)
+		cr:source(sr0, 0, 0)
+		cr:paint()
+		cr:rgb(0, 0, 0) --release source
+		cr:free()
+		glyph.surface = sr
+	else
+		var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h)
+		var cr = cairo_create(sr)
+		if bmp.pixel_mode == FT_PIXEL_MODE_GRAY then
+			cr:rgb(1, 1, 1)
+			cr:mask(sr0, 0, 0)
+		else
 			cr:source(sr0, 0, 0)
 			cr:paint()
 			cr:rgb(0, 0, 0) --release source
-			glyph.surface = sr1
 		end
+		cr:free()
+		glyph.surface = sr
 	end
 
+	sr0:free()
 end
 
 terra TextRenderer:unwrap_glyph(glyph: &Glyph)
-	glyph.surface:free()
-	glyph.surface = nil
+	if glyph.surface ~= nil then
+		glyph.surface:free()
+		glyph.surface = nil
+	end
 end
 
 --NOTE: clip_left and clip_right are relative to bitmap's left edge.
@@ -67,18 +80,13 @@ terra TextRenderer:paint_glyph(
 		cr:save()
 		cr:new_path()
 		var x1 = x + clip_left
-		var x2 = x + glyph.ft_bitmap.width + clip_right
-		cr:rectangle(x1, y, x2 - x1, glyph.ft_bitmap.rows)
+		var x2 = x + glyph.surface:width() + clip_right
+		cr:rectangle(x1, y, x2 - x1, glyph.surface:height())
 		cr:clip()
 	end
-	if glyph.ft_bitmap.pixel_mode == FT_PIXEL_MODE_GRAY then
-		--print('paint_glypu/mask', glyph.surface, x, y)
-		cr:mask(glyph.surface, x, y)
-	else
-		cr:source(glyph.surface, x, y)
-		cr:paint()
-		cr:rgb(0, 0, 0) --clear source
-	end
+	cr:source(glyph.surface, x, y)
+	cr:paint()
+	cr:rgb(0, 0, 0) --clear source
 	if clip then
 		cr:restore()
 	end

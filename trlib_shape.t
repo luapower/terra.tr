@@ -116,9 +116,9 @@ iter.load_values = function(self, i)
 			tr_eof = self.text_runs:eof(tr_index)
 			tr1 = self.text_runs.array:at(tr_index)
 			tr_diff = tr0 == nil
-				or tr1.font      ~= tr0.font
-				or tr1.font_size ~= tr0.font_size
-				or tr1.features  ~= tr0.features
+				or tr1.font_id         ~= tr0.font_id
+				or tr1.font_size_16_6  ~= tr0.font_size_16_6
+				or tr1.features        ~= tr0.features
 		else
 			tr_diff = false
 		end
@@ -312,44 +312,46 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 		self.langs.elements,
 		self.linebreaks.elements
 	) do
-		var str = str + offset
+		var str = str+offset
+
+		--UBA codes: 0: required, 1: allowed, 2: not allowed.
+		var linebreak_code = self.linebreaks(offset+len-1)
+		--user codes: 2: paragraph, 1: line, 0: softbreak.
+		var linebreak = iif(linebreak_code == 0,
+			iif(str[len-1] == PS, BREAK_PARA, BREAK_LINE), BREAK_NONE)
+
+		if linebreak ~= BREAK_NONE then
+			inc(line_num)
+		end
 
 		--find the seg length without trailing linebreak chars.
 		while len > 0 and isnewline(str[len-1]) do
 			dec(len)
 		end
 
-		--find if the seg has a trailing space char.
+		--find if the seg has a trailing space char (before any linebreak chars).
 		var trailing_space = len > 0
 			and FRIBIDI_IS_EXPLICIT_OR_BN_OR_WS(self.bidi_types(offset+len-1))
 
 		--shape the seg excluding trailing linebreak chars.
 		var gr = GlyphRun {
-			text      = arr(codepoint);
-			font      = tr.font;
-			font_size = tr.font_size;
-			features  = tr.features;
-			script    = script;
-			lang      = lang;
-			rtl       = isodd(level);
-			trailing_space = trailing_space;
+			text            = arr(codepoint);
+			font_id         = tr.font_id;
+			font_size_16_6  = tr.font_size_16_6;
+			features        = tr.features;
+			script          = script;
+			lang            = lang;
+			rtl             = isodd(level);
+			trailing_space  = trailing_space;
 		}
-		gr.text.view = arrview(str, len)
-		print(gr.text.view.elements, gr.text.view.len)
+		gr.text.view = arrview(str, len) --fake a dynarray to avoid copying
 		var glyph_run = self:shape_word(gr)
-
-		--UBA codes: 0: required, 1: allowed, 2: not allowed.
-		var linebreak_code = iif(offset > 0, self.linebreaks(offset-1), 2)
-		--user codes: 2: paragraph, 1: line, 0: softbreak.
-		var linebreak = iif(linebreak_code == 0,
-			iif(str[-1] == PS, BREAK_PARA, BREAK_LINE), BREAK_NONE)
-		if linebreak ~= BREAK_NONE then inc(line_num) end
 
 		if glyph_run ~= nil then --font loaded successfully
 			var seg = segs.array:add()
 			seg.glyph_run = glyph_run
 			seg.line_num = line_num --physical line number (unused)
-			seg.linebreak = linebreak --for line breaking
+			seg.linebreak = linebreak --means this segment _ends_ a line
 			seg.bidi_level = level --for bidi reordering
 			--for cursor positioning
 			seg.text_run = tr --text run of the first sub-seg
@@ -358,7 +360,6 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 			seg.x = 0; seg.advance_x = 0 --seg's x-axis boundaries
 			seg.next = nil--next seg on the same line in text order
 			seg.next_vis = nil --next seg on the same line in visual order
-			seg.line = nil
 			seg.wrapped = false --seg is the last on a wrapped line
 			seg.visible = true --seg is not entirely clipped
 			seg.subsegs:init()

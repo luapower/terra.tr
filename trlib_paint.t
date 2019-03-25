@@ -1,6 +1,8 @@
 
 --Painting rasterized glyph runs into a cairo surface.
 
+if not ... then require'trlib_test'; return end
+
 setfenv(1, require'trlib_types')
 require'trlib_clip'
 require'trlib_rasterize'
@@ -18,18 +20,19 @@ terra TextRenderer:paint_glyph_run(
 		var oy = run.pos[i].y_offset / 64.0
 
 		var glyph, bmpx, bmpy = self:rasterize_glyph(
-			run.font, run.font_size, glyph_index,
+			run.font_id, run.font_size, glyph_index,
 			ax + px + ox,
 			ay - oy
 		)
 
-		if glyph.ft_bitmap.buffer ~= nil then
+		if glyph.surface ~= nil then
 			if clip then
 				--make clip_left and clip_right relative to bitmap's left edge.
 				clip_left  = clip_left + ax - bmpx
 				clip_right = clip_right + ax - bmpx
 			end
-			print('paint_glyph', i, bmpx, bmpy, clip, clip_left, clip_right)
+			--print('paint_glyph', i, bmpx, bmpy, clip, clip_left, clip_right)
+			inc(self.paint_glyph_num)
 			self:paint_glyph(cr, glyph, bmpx, bmpy, clip, clip_left, clip_right)
 		end
 	end
@@ -43,7 +46,7 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 
 	var lines = &segs.lines
 	for line_i = lines.first_visible, lines.last_visible + 1 do
-		print('paint line', line_i, lines.array.len)
+		--print('paint line', line_i, lines.array.len)
 		var line = lines.array:at(line_i)
 		if line.visible then
 
@@ -69,7 +72,7 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 					]]
 
 					self:setcontext(cr, seg.text_run)
-					print('paint seg', @seg)
+					--print('paint seg', seg)
 					self:paint_glyph_run(cr, run, 0, run.len, x, y, false, 0, 0)
 					--end
 

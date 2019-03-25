@@ -1,15 +1,18 @@
 
 --Module table & environment with dependencies, enums and types.
 
+if not ... then require'trlib_test'; return end
+
 setfenv(1, require'trlib_env')
 
 --dependencies ---------------------------------------------------------------
 
 assert(color, 'require the graphics adapter first, eg. trlib_paint_cairo')
 
-phf = require'phf'
-fixedfreelist = require'fixedfreelist'
-lrucache = require'lrucache'
+require'phf'
+require'fixedfreelist'
+require'lrucache'
+require'arrayfreelist'
 
 require_h'freetype_h'
 require_h'harfbuzz_h'
@@ -57,6 +60,7 @@ BREAK_PARA = 2
 
 --types ----------------------------------------------------------------------
 
+font_id_t = uint16
 cursor_offset_t = int16
 cursor_x_t = num
 
@@ -92,10 +96,10 @@ struct Font {
 
 TextRunState = TextRunState or struct {}
 
-struct TextRun {
+struct TextRun (gettersandsetters) {
 	offset: int; --offset in the text, in codepoints.
-	font: &Font;
-	font_size: num;
+	font_id: font_id_t;
+	font_size_16_6: uint16;
 	features: arr(hb_feature_t);
 	script: hb_script_t;
 	lang: hb_language_t;
@@ -109,6 +113,17 @@ struct TextRun {
 	operator: int;   --blending operator (CAIRO_OPERATOR_OVER).
 	_state: TextRunState;
 }
+
+local function getset_dec6(T, pub, priv)
+	T.methods['get_'..pub] = macro(function(self)
+		return `self.[priv] / 64.0
+	end)
+	T.methods['set_'..pub] = macro(function(self, x)
+		return quote self.[priv] = clamp(x, 0, 0x3ff) * 64 end
+	end)
+end
+
+getset_dec6(TextRun, 'font_size', 'font_size_16_6')
 
 terra TextRun:init()
 	fill(self)
@@ -161,49 +176,57 @@ function TextRuns.metamethods.__cast(from, to, exp)
 	end
 end
 
-struct GlyphRun {
+struct GlyphRun (gettersandsetters) {
 	--cache key fields: must not have alignment holes!
-	text           : arr(codepoint);
-	features       : arr(hb_feature_t);
-	font           : &Font;
-	font_size      : num;
-	lang           : hb_language_t;
-	script         : hb_script_t;
-	rtl            : bool;
+	text            : arr(codepoint);
+	features        : arr(hb_feature_t);
+	lang            : hb_language_t;
+	script          : hb_script_t;
+	font_id         : font_id_t;
+	font_size_16_6  : uint16;
+	rtl             : bool;
 	--resulting glyphs and glyph metrics
-	hb_buf         : &hb_buffer_t; --anchored
-	info           : &hb_glyph_info_t; --0..len-1
-	pos            : &hb_glyph_position_t; --0..len-1
-	len            : int16; --glyph count
+	hb_buf          : &hb_buffer_t; --anchored
+	info            : &hb_glyph_info_t; --0..len-1
+	pos             : &hb_glyph_position_t; --0..len-1
+	len             : int16; --glyph count
 	--for positioning in horizontal flow
-	ascent         : num;
-	descent        : num;
-	advance_x      : num;
-	wrap_advance_x : num;
+	ascent          : num;
+	descent         : num;
+	advance_x       : num;
+	wrap_advance_x  : num;
 	--for cursor positioning and hit testing
-	cursor_offsets : &cursor_offset_t; --0..text_len
-	cursor_xs      : &cursor_x_t; --0..text_len
-	trailing_space : bool;
+	cursor_offsets  : &cursor_offset_t; --0..text_len
+	cursor_xs       : &cursor_x_t; --0..text_len
+	trailing_space  : bool;
 }
 
-do
-	local key_offset = offsetof(GlyphRun, 'font')
-	local key_size = offsetof(GlyphRun, 'rtl') + sizeof(bool) - key_offset
+getset_dec6(GlyphRun, 'font_size', 'font_size_16_6')
 
-	terra GlyphRun:__hash32(h: uint32)
-		h = hash(uint32, [&char](self) + key_offset, h, key_size)
-		h = hash(uint32, &self.text, h)
-		h = hash(uint32, &self.features, h)
-		return h
-	end
+local key_offset = offsetof(GlyphRun, 'lang')
+local key_size = offsetof(GlyphRun, 'rtl') + sizeof(bool) - key_offset
 
-	terra GlyphRun:__eq(other: &GlyphRun)
-		return equal(
-				[&char](self)  + key_offset,
-				[&char](other) + key_offset, key_size)
-			and self.text == other.text
-			and self.features == other.features
-	end
+terra GlyphRun:__hash32(h: uint32)
+	h = hash(uint32, [&char](self) + key_offset, h, key_size)
+	h = hash(uint32, &self.text, h)
+	h = hash(uint32, &self.features, h)
+	return h
+end
+
+terra GlyphRun:__eq(other: &GlyphRun)
+	return equal(
+			[&char](self)  + key_offset,
+			[&char](other) + key_offset, key_size)
+		and self.text == other.text
+		and self.features == other.features
+end
+
+terra GlyphRun:__memsize()
+	return sizeof(GlyphRun)
+		+ self.text:__memsize()
+		+ self.features:__memsize()
+		+ (sizeof(cursor_offset_t) + sizeof(cursor_x_t)) * (self.text.len + 1)
+		+ (sizeof(hb_glyph_info_t) + sizeof(hb_glyph_position_t)) * self.len
 end
 
 GlyphRunCache = lrucache {key_t = GlyphRun}
@@ -233,7 +256,6 @@ struct Seg {
 	advance_x: num; --segment's x-axis boundaries
 	next: &Seg; --next segment on the same line in text order
 	next_vis: &Seg; --next segment on the same line in visual order
-	line: &Line;
 	wrapped: bool; --segment is the last on a wrapped line
 	visible: bool; --segment is not entirely clipped
 	subsegs: arr(SubSeg);
@@ -326,34 +348,46 @@ function Segs.metamethods.__cast(from, to, exp)
 	end
 end
 
-struct Glyph {
+struct Glyph (gettersandsetters) {
 	--cache key: must not have alignment holes!
-	font        : &Font
-	font_size   : num;
-	offset_x    : num;
-	offset_y    : num;
-	glyph_index : int;
-	--freetype bitmap
-	ft_bitmap: FT_Bitmap;
-	ft_bitmap_left: int;
-	ft_bitmap_top: int;
+	font_id         : font_id_t;
+	font_size_16_6  : uint16;
+	glyph_index     : uint;
+	offset_x_8_6    : uint8; -- 0..63 representing 0..1
 	--graphics surface
-	surface: &GraphicsSurface;
+	surface: &GlyphSurface;
+	x: int16; y: int16; --bitmap coordinates relative to the glyph origin
 }
 
-do
-	local key_offset = offsetof(Glyph, 'font')
-	local key_size = offsetof(Glyph, 'glyph_index') + sizeof(int) - key_offset
+Glyph.empty = `Glyph {
+	font_id = -1;
+	font_size_16_6 = 0;
+	offset_x_8_6 = 0;
+	glyph_index = 0;
+	surface = nil;
+	x = 0; y = 0;
+}
 
-	terra Glyph:__hash32(h: uint32)
-		return hash(uint32, [&char](self) + key_offset, h, key_size)
-	end
+getset_dec6(Glyph, 'font_size', 'font_size_16_6')
+getset_dec6(Glyph, 'offset_x', 'offset_x_8_6')
 
-	terra Glyph:__eq(other: &Glyph)
-		return equal(
-			[&char](self ) + key_offset,
-			[&char](other) + key_offset, key_size)
-	end
+local key_offset = offsetof(Glyph, 'font_id')
+local key_size = offsetof(Glyph, 'offset_x_8_6') + sizeof(Glyph:getfield'offset_x_8_6'.type)
+
+terra Glyph:__hash32(h: uint32)
+	return hash(uint32, [&char](self) + key_offset, h, key_size)
+end
+
+terra Glyph:__eq(other: &Glyph)
+	return equal(
+		[&char](self ) + key_offset,
+		[&char](other) + key_offset, key_size)
+end
+
+terra Glyph:__memsize()
+	return sizeof(Glyph)
+		+ iif(self.surface ~= nil,
+			self.surface:stride() * self.surface:height(), 0)
 end
 
 GlyphCache = lrucache {key_t = Glyph}
@@ -377,9 +411,10 @@ struct TextRenderer (gettersandsetters) {
 	--rasterizer config
 	font_size_resolution: num;
 	subpixel_x_resolution: num;
-	subpixel_y_resolution: num;
 
 	ft_lib: FT_Library;
+
+	fonts: arrayfreelist(Font, uint16);
 
 	glyphs: GlyphCache;
 	glyph_runs: GlyphRunCache;
@@ -405,6 +440,7 @@ struct TextRenderer (gettersandsetters) {
 	HB_LANGUAGE_RU: hb_language_t;
 	HB_LANGUAGE_ZH: hb_language_t;
 
+	paint_glyph_num: int;
 }
 
 return trlib

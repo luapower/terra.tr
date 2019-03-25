@@ -7,35 +7,26 @@ setfenv(1, require'trlib_types')
 require'trlib_font'
 require'trlib_rle'
 
---interface with the LRU cache
-
-terra GlyphRun:__memsize()
-	return sizeof(GlyphRun)
-		+ self.text:__memsize()
-		+ self.features:__memsize()
-		+ (sizeof(cursor_offset_t) + sizeof(cursor_x_t)) * (self.text.len + 1)
-		+ (sizeof(hb_glyph_info_t) + sizeof(hb_glyph_position_t)) * self.len
-end
-
-terra GlyphRun:free()
+terra GlyphRun:free(tr: &TextRenderer)
 	hb_buffer_destroy(self.hb_buf)
 	free(self.cursor_xs)
 	free(self.cursor_offsets)
-	self.font:unref()
+	tr.fonts:at(self.font_id):unref()
 	self.text:free()
 	self.features:free()
 	fill(self)
 end
 
-terra GlyphRun:shape()
-	if not self.font:ref() then return false end
-	self.font:setsize(self.font_size)
+terra GlyphRun:shape(tr: &TextRenderer)
+	var font = tr.fonts:at(self.font_id)
+	if not font:ref() then return false end
+	font:setsize(self.font_size)
 
-	print('shape/copy', self.text, self.features)
+	--print('shape/copy', self.text, self.features)
 	self.text = self.text:copy()
 	self.features = self.features:copy()
 
-	print('shape/hb create', self.text, self.features)
+	--print('shape/hb create', self.text, self.features)
 	var hb_dir = iif(self.rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR)
 	self.hb_buf = hb_buffer_create()
 	hb_buffer_set_cluster_level(self.hb_buf,
@@ -47,36 +38,33 @@ terra GlyphRun:shape()
 	hb_buffer_set_script(self.hb_buf, self.script)
 	hb_buffer_set_language(self.hb_buf, self.lang)
 	hb_buffer_add_codepoints(self.hb_buf, self.text.elements, self.text.len, 0, self.text.len)
-	print('shape/hb shape',
-		self.hb_buf, @self.font,
-		self.text.elements, self.text.len
+	--print('shape/hb shape', self.hb_buf, self.font, self.text.elements, self.text.len
 		--self.text.elements[0], self.text.elements[1],
 		--self.script, self.lang
-		--self.features.elements, self.features.len
-		)
-	hb_shape(self.font.hb_font, self.hb_buf, self.features.elements, self.features.len)
-	print'shape/hb shape done'
+		--self.features.elements, self.features.len)
+	hb_shape(font.hb_font, self.hb_buf, self.features.elements, self.features.len)
+	--print'shape/hb shape done'
 
 	var len: uint32
 	self.info = hb_buffer_get_glyph_infos(self.hb_buf, &len)
 	self.pos  = hb_buffer_get_glyph_positions(self.hb_buf, &len)
 	self.len = len
 
-	print('shape/compute advances', len)
+	--print('shape/compute advances', len)
 	--1. scale advances and offsets based on `font.scale` (for bitmap fonts).
 	--2. make the advance of each glyph relative to the start of the run
 	--   so that pos_x() is O(1) for any index.
 	--3. compute the run's total advance.
 	var ax: int = 0
 	for i = 0, self.len do
-		ax = (ax + self.pos[i].x_advance) * self.font.scale
-		self.pos[i].x_offset = self.pos[i].x_offset * self.font.scale
+		ax = (ax + self.pos[i].x_advance) * font.scale
+		self.pos[i].x_offset = self.pos[i].x_offset * font.scale
 		self.pos[i].x_advance = ax
 	end
-	self.advance_x = [num](ax) / 64 --for positioning in horizontal flow
+	self.advance_x = ax / 64.0 --for positioning in horizontal flow
 
-	self.ascent = self.font.ascent
-	self.descent = self.font.descent
+	self.ascent = font.ascent
+	self.descent = font.descent
 
 	return true
 end
@@ -132,7 +120,7 @@ end)
 
 terra GlyphRun:pos_x(i: int)
 	assert(i >= 0 and i <= self.len)
-	return iif(i > 0, self.pos[i-1].x_advance / 64, 0)
+	return iif(i > 0, self.pos[i-1].x_advance / 64.0, 0)
 end
 
 terra GlyphRun:_add_cursors(
@@ -146,6 +134,8 @@ terra GlyphRun:_add_cursors(
 	str: &codepoint,
 	str_len: int
 )
+	var font = tr.fonts:at(self.font_id)
+
 	self.cursor_offsets[cluster] = cluster
 	self.cursor_xs[cluster] = cluster_x
 	if cluster_len <= 1 then return end
@@ -169,7 +159,7 @@ terra GlyphRun:_add_cursors(
 		var carets, caret_count =
 			get_ligature_carets(
 				tr,
-				self.font.hb_font,
+				font.hb_font,
 				iif(self.rtl, HB_DIRECTION_RTL, HB_DIRECTION_LTR),
 				glyph_index)
 		if caret_count > 0 then
@@ -179,7 +169,7 @@ terra GlyphRun:_add_cursors(
 			for i = 0, caret_count-1 do
 				--create a synthetic cluster at each grapheme boundary.
 				cluster = next_grapheme(tr.grapheme_breaks.elements, cluster, str_len)
-				var lig_x = carets[i] / 64
+				var lig_x = carets[i] / 64.0
 				self.cursor_offsets[cluster] = cluster
 				self.cursor_xs[cluster] = cluster_x + lig_x
 			end
@@ -210,8 +200,8 @@ end
 
 terra GlyphRun:compute_cursors(tr: &TextRenderer)
 
-	self.cursor_offsets = new(int16, self.text.len + 1) --in logical order
-	self.cursor_xs = new(num, self.text.len + 1) --in logical order
+	self.cursor_offsets = alloc(int16, self.text.len + 1) --in logical order
+	self.cursor_xs = alloc(num, self.text.len + 1) --in logical order
 	for i = 0, self.text.len + 1 do
 		self.cursor_offsets[i] = -1 --invalid offset, fixed later
 	end
@@ -289,18 +279,18 @@ end
 
 terra TextRenderer:shape_word(glyph_run: GlyphRun)
 	--get the shaped run from cache or shape it and cache it.
-	print'shape_word/get'
+	--print'shape_word/get'
 	var pair = self.glyph_runs:get(glyph_run)
-	print('shape_word/got', pair)
+	--print('shape_word/got', pair)
 	if pair == nil then
-		print'shape_word/shaping'
-		if not glyph_run:shape() then return nil end
+		--print'shape_word/shaping'
+		if not glyph_run:shape(self) then return nil end
 		--print'shape_word/computing cursors'
 		glyph_run:compute_cursors(self)
-		print('shape_word/putting')
-		pair = self.glyph_runs:put(glyph_run, true)
+		--print('shape_word/putting')
+		pair = self.glyph_runs:put(glyph_run, {})
 		assert(pair~= nil)
-		print('shape_word/put')
+		--print('shape_word/put')
 	end
 	return &pair.key
 end
