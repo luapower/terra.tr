@@ -1,5 +1,5 @@
 
---Shaping text runs into an array of segments.
+--Shaping rich text into an array of segments.
 
 if not ... then require'trlib_test'; return end
 
@@ -40,7 +40,7 @@ local langs_iter = rle_iterator{
 	values_different  = function()        return `lang0 ~= lang1 end,
 }
 
-TextRenderer.methods.lang_runs = macro(function(self, len)
+TextRenderer.methods.lang_spans = macro(function(self, len)
 	return `langs_iter{&self.langs, 0, len}
 end)
 
@@ -50,7 +50,7 @@ local c0 = symbol(codepoint)
 local c1 = symbol(codepoint)
 
 local para_iter = rle_iterator{
-	state = &TextRuns,
+	state = &Layout,
 	for_variables = {},
 	declare_variables = function()        return quote var [c0], [c1] end end,
 	save_values       = function()        return quote c0 = c1 end end,
@@ -58,14 +58,14 @@ local para_iter = rle_iterator{
 	values_different  = function()        return `c0 == PS end,
 }
 
-TextRuns.methods.paragraphs = macro(function(self)
+Layout.methods.paragraphs = macro(function(self)
 	return `para_iter{&self, 0, self.text.len}
 end)
 
 --iterate text segments having the same shaping-relevant properties.
 
 local word_iter_state = struct {
-	text_runs: &TextRuns;
+	layout: &Layout;
 	levels: &FriBidiLevel;
 	scripts: &hb_script_t;
 	langs: &hb_language_t;
@@ -74,11 +74,11 @@ local word_iter_state = struct {
 
 local iter = {state = word_iter_state}
 
-local tr_index   = symbol(int)
-local tr_eof     = symbol(int)
-local tr_diff    = symbol(bool)
-local tr0        = symbol(&TextRun)
-local tr1        = symbol(&TextRun)
+local span_index = symbol(int)
+local span_eof   = symbol(int)
+local span_diff  = symbol(bool)
+local span0      = symbol(&Span)
+local span1      = symbol(&Span)
 local level0     = symbol(FriBidiLevel)
 local level1     = symbol(FriBidiLevel)
 local script0    = symbol(hb_script_t)
@@ -86,23 +86,23 @@ local script1    = symbol(hb_script_t)
 local lang0      = symbol(hb_language_t)
 local lang1      = symbol(hb_language_t)
 
-iter.for_variables = {tr0, tr1, level0, script0, lang0}
+iter.for_variables = {span0, level0, script0, lang0}
 
 iter.declare_variables = function(self)
 	return quote
-		var [tr_index] = -1
-		var [tr_eof] = 0
-		var [tr_diff] = false
-		var [tr0], [level0], [script0], [lang0]
-		var [tr1], [level1], [script1], [lang1]
-		tr0 = nil
+		var [span_index] = -1
+		var [span_eof] = 0
+		var [span_diff] = false
+		var [span0], [level0], [script0], [lang0]
+		var [span1], [level1], [script1], [lang1]
+		span0 = nil
 	end
 end
 
 iter.save_values = function()
 	return quote
-		tr0, level0, script0, lang0 =
-		tr1, level1, script1, lang1
+		span0, level0, script0, lang0 =
+		span1, level1, script1, lang1
 	end
 end
 
@@ -111,23 +111,23 @@ iter.load_values = function(self, i)
 		level1     = self.levels[i]
 		script1    = self.scripts[i]
 		lang1      = self.langs[i]
-		if i >= tr_eof then --time to load a new text run
-			inc(tr_index)
-			tr_eof = self.text_runs:eof(tr_index)
-			tr1 = self.text_runs.array:at(tr_index)
-			tr_diff = tr0 == nil
-				or tr1.font_id         ~= tr0.font_id
-				or tr1.font_size_16_6  ~= tr0.font_size_16_6
-				or tr1.features        ~= tr0.features
+		if i >= span_eof then --time to load a new text run
+			inc(span_index)
+			span_eof = self.layout:eof(span_index)
+			span1 = self.layout.spans:at(span_index)
+			span_diff = span0 == nil
+				or span1.font_id         ~= span0.font_id
+				or span1.font_size_16_6  ~= span0.font_size_16_6
+				or span1.features        ~= span0.features
 		else
-			tr_diff = false
+			span_diff = false
 		end
 	end
 end
 
 iter.values_different = function(self, i)
 	return `
-		tr_diff
+		span_diff
 		or self.linebreaks[i-1] < 2 --0: required, 1: allowed, 2: not allowed
 		or level1  ~= level0
 		or script1 ~= script0
@@ -136,10 +136,10 @@ end
 
 local word_iter = rle_iterator(iter)
 
-TextRuns.methods.word_runs = macro(function(self, levels, scripts, langs, linebreaks)
+Layout.methods.word_spans = macro(function(self, levels, scripts, langs, linebreaks)
 	return `word_iter{
 		word_iter_state{
-			text_runs = &self,
+			layout = &self,
 			levels = levels,
 			scripts = scripts,
 			langs = langs,
@@ -149,13 +149,13 @@ end)
 
 --search for the text run that is spanning over a specific text position.
 
-terra TextRuns:run_index_at_offset(offset: int, i0: int)
-	for i = i0 + 1, self.array.len do
-		if self.array:at(i).offset > offset then
+terra Layout:span_index_at_offset(offset: int, i0: int)
+	for i = i0 + 1, self.spans.len do
+		if self.spans:at(i).offset > offset then
 			return i-1
 		end
 	end
-	return self.array.len-1
+	return self.spans.len-1
 end
 
 --for harfbuzz, language is a IETF BCP 47 language code + country code,
@@ -180,46 +180,48 @@ terra TextRenderer:ub_lang(hb_lang: hb_language_t): rawstring
 	else return nil end
 end
 
-terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
+terra Layout:shape()
 
-	for _,seg in segs.array do
+	var r = self.tr
+	var segs = &self.segs
+	for _,seg in segs do
 		seg.subsegs:free()
 	end
-	segs.array.len = 0
+	segs.len = 0
 	--remove cached values.
-	segs.lines.array.len = 0
-	segs._min_w = -inf
-	segs._max_w =  inf
-	if text_runs.array.len == 0 then
+	self.lines.len = 0
+	self._min_w = -inf
+	self._max_w =  inf
+	if self.spans.len == 0 then
 		return
 	end
 
-	var str = text_runs.text.elements
-	var len = text_runs.text.len
+	var str = self.text.elements
+	var len = self.text.len
 
 	--script and language detection and assignment
-	self.scripts.len = len
-	self.langs.len = len
+	r.scripts.len = len
+	r.langs.len = len
 
 	--script/lang detection is expensive: see if we can avoid it.
 	var do_detect_scripts = false
 	var do_detect_langs = false
-	for run_index, run in text_runs.array do
-		if run.script == HB_SCRIPT_COMMON then do_detect_scripts = true end
-		if run.lang == nil then do_detect_langs = true end
+	for i, span in self.spans do
+		if span.script == HB_SCRIPT_COMMON then do_detect_scripts = true end
+		if span.lang == nil then do_detect_langs = true end
 		if do_detect_scripts and do_detect_langs then break end
 	end
 
 	--detect the script property for each char of the entire text.
 	if do_detect_scripts then
-		detect_scripts(self, str, len, self.scripts.elements)
+		detect_scripts(r, str, len, r.scripts.elements)
 	end
 
 	--override scripts with user-provided values.
-	for run_index, run in text_runs.array do
-		if run.script ~= HB_SCRIPT_COMMON then
-			for i = run.offset, text_runs:eof(run_index) do
-				self.scripts.elements[i] = run.script
+	for span_index, span in self.spans do
+		if span.script ~= HB_SCRIPT_COMMON then
+			for i = span.offset, self:eof(span_index) do
+				r.scripts.elements[i] = span.script
 			end
 		end
 	end
@@ -227,15 +229,15 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--detect the lang property based on the script property.
 	if do_detect_langs then
 		for i = 0, len do
-			self.langs.elements[i] = lang_for_script(self.scripts.elements[i])
+			r.langs.elements[i] = lang_for_script(r.scripts.elements[i])
 		end
 	end
 
 	--override langs with user-provided values.
-	for run_index, run in text_runs.array do
-		if run.lang ~= nil then
-			for i = run.offset, text_runs:eof(run_index) do
-				self.langs.elements[i] = run.lang
+	for span_index, span in self.spans do
+		if span.lang ~= nil then
+			for i = span.offset, self:eof(span_index) do
+				r.langs.elements[i] = span.lang
 			end
 		end
 	end
@@ -247,55 +249,55 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 	--the RTL runs, which harfbuzz also does, and 2) because bidi reordering
 	--needs to be done after line breaking and so it's part of layouting.
 
-	self.bidi_types    .len = len
-	self.bracket_types .len = len
-	self.levels        .len = len
+	r.bidi_types    .len = len
+	r.bracket_types .len = len
+	r.levels        .len = len
 
-	segs.bidi = false --is bidi reordering needed on line-wrapping or not?
-	segs.base_dir = DIR_AUTO --bidi direction of the first paragraph of the text.
+	self.bidi = false --is bidi reordering needed on line-wrapping or not?
+	self.base_dir = DIR_AUTO --bidi direction of the first paragraph of the text.
 
-	var text_run_index = 0
-	for offset, len in text_runs:paragraphs() do
+	var span_index = 0
+	for offset, len in self:paragraphs() do
 		var str = str + offset
 
-		text_run_index = text_runs:run_index_at_offset(offset, text_run_index)
-		var text_run = text_runs.array:at(text_run_index)
+		span_index = self:span_index_at_offset(offset, span_index)
+		var span = self.spans:at(span_index)
 
-		--the text run that starts exactly where the paragraph starts can set
+		--the span that starts exactly where the paragraph starts can set
 		--the paragraph base direction, otherwise it is auto-detected.
-		var dir = iif(text_run.offset == offset, text_run.dir, DIR_AUTO)
+		var dir = iif(span.offset == offset, span.dir, DIR_AUTO)
 
-		fribidi_get_bidi_types(str, len, self.bidi_types:at(offset))
+		fribidi_get_bidi_types(str, len, r.bidi_types:at(offset))
 
 		fribidi_get_bracket_types(str, len,
-			self.bidi_types:at(offset),
-			self.bracket_types:at(offset))
+			r.bidi_types:at(offset),
+			r.bracket_types:at(offset))
 
 		var max_bidi_level = fribidi_get_par_embedding_levels_ex(
-			self.bidi_types:at(offset),
-			self.bracket_types:at(offset),
+			r.bidi_types:at(offset),
+			r.bracket_types:at(offset),
 			len,
 			&dir,
-			self.levels:at(offset)) - 1
+			r.levels:at(offset)) - 1
 
 		assert(max_bidi_level >= 0)
 
-		segs.bidi = segs.bidi
+		self.bidi = self.bidi
 			or max_bidi_level > iif(dir == DIR_RTL, 1, 0)
 
-		if segs.base_dir == 0 then --take the dir of the first paragraph
-			segs.base_dir = dir
+		if self.base_dir == 0 then --take the dir of the first paragraph
+			self.base_dir = dir
 		end
 	end
 
-	--Run Unicode line breaking over each run of text with the same language.
+	--Run Unicode line breaking over each span of text with the same language.
 	--NOTE: libunibreak always puts a hard break at the end of the text.
 	--We don't want that so we're passing it one more codepoint than needed.
 
-	self.linebreaks.len = len + 1
-	for offset, len, lang in self:lang_runs(len) do
+	r.linebreaks.len = len + 1
+	for offset, len, lang in r:lang_spans(len) do
 		set_linebreaks_utf32(str + offset, len + 1,
-			self:ub_lang(lang), self.linebreaks:at(offset))
+			r:ub_lang(lang), r.linebreaks:at(offset))
 	end
 
 	--Split the text into segs of characters with the same properties,
@@ -306,16 +308,16 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 
 	var line_num = 0
 
-	for offset, len, tr, tr1, level, script, lang in text_runs:word_runs(
-		self.levels.elements,
-		self.scripts.elements,
-		self.langs.elements,
-		self.linebreaks.elements
+	for offset, len, span, level, script, lang in self:word_spans(
+		r.levels.elements,
+		r.scripts.elements,
+		r.langs.elements,
+		r.linebreaks.elements
 	) do
 		var str = str+offset
 
 		--UBA codes: 0: required, 1: allowed, 2: not allowed.
-		var linebreak_code = self.linebreaks(offset+len-1)
+		var linebreak_code = r.linebreaks(offset+len-1)
 		--user codes: 2: paragraph, 1: line, 0: softbreak.
 		var linebreak = iif(linebreak_code == 0,
 			iif(str[len-1] == PS, BREAK_PARA, BREAK_LINE), BREAK_NONE)
@@ -331,30 +333,32 @@ terra TextRenderer:shape(text_runs: &TextRuns, segs: &Segs)
 
 		--find if the seg has a trailing space char (before any linebreak chars).
 		var trailing_space = len > 0
-			and FRIBIDI_IS_EXPLICIT_OR_BN_OR_WS(self.bidi_types(offset+len-1))
+			and FRIBIDI_IS_EXPLICIT_OR_BN_OR_WS(r.bidi_types(offset+len-1))
 
 		--shape the seg excluding trailing linebreak chars.
 		var gr = GlyphRun {
+			--cache key
 			text            = arr(codepoint);
-			font_id         = tr.font_id;
-			font_size_16_6  = tr.font_size_16_6;
-			features        = tr.features;
-			script          = script;
+			features        = span.features;
 			lang            = lang;
+			script          = script;
+			font_id         = span.font_id;
+			font_size_16_6  = span.font_size_16_6;
 			rtl             = isodd(level);
+			--info for shaping a new glyph run
 			trailing_space  = trailing_space;
 		}
 		gr.text.view = arrview(str, len) --fake a dynarray to avoid copying
-		var glyph_run = self:shape_word(gr)
+		var glyph_run_id, glyph_run = r:shape_word(gr)
 
 		if glyph_run ~= nil then --font loaded successfully
-			var seg = segs.array:add()
-			seg.glyph_run = glyph_run
+			var seg = segs:add()
+			seg.glyph_run_id = glyph_run_id
 			seg.line_num = line_num --physical line number (unused)
 			seg.linebreak = linebreak --means this segment _ends_ a line
 			seg.bidi_level = level --for bidi reordering
 			--for cursor positioning
-			seg.text_run = tr --text run of the first sub-seg
+			seg.span = span --span of the first sub-seg
 			seg.offset = offset
 			--slots filled by layouting
 			seg.x = 0; seg.advance_x = 0 --seg's x-axis boundaries

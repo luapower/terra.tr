@@ -1,4 +1,6 @@
 
+if not ... then require'trlib_test'; return end
+
 setfenv(1, require'trlib_types')
 
 terra Font:init(tr: &TextRenderer, load: FontLoadFunc, unload: FontUnloadFunc)
@@ -36,19 +38,17 @@ terra Font:ref()
 		hb_ft_font_set_load_flags(self.hb_font, self.ft_load_flags)
 	end
 	inc(self.refcount)
-	--print('font/ref', self.refcount, self.ft_face, self.hb_font, self.ft_load_flags)
 	return true
 end
 
 terra Font:unref()
 	assert(self.refcount > 0)
-	dec(self.refcount)
-	if self.refcount == 0 then
+	if self.refcount == 1 then
 		hb_font_destroy(self.hb_font); self.hb_font = nil
 		FT_Done_Face(self.ft_face); self.ft_face = nil
 		self.unload(self, &self.file_data, &self.file_size)
 	end
-	--print('font/unref', self.refcount)
+	dec(self.refcount)
 end
 
 terra Font:setsize(size: num)
@@ -59,7 +59,7 @@ terra Font:setsize(size: num)
 	var size_index: int
 	var fixed_size = size
 	var found = false
-	var best_diff: num = 1.0/0
+	var best_diff = [num](inf)
 	for i = 0, self.ft_face.num_fixed_sizes do
 		var sz = self.ft_face.available_sizes[i]
 		var this_size = sz.height
@@ -79,7 +79,7 @@ terra Font:setsize(size: num)
 		FT_Set_Pixel_Sizes(self.ft_face, fixed_size, 0)
 	end
 
-	var ft_scale = self.scale / 64.0
+	var ft_scale: num = self.scale / 64.f
 	var m = self.ft_face.size.metrics
 	self.ascent = m.ascender * ft_scale
 	self.descent = m.descender * ft_scale
@@ -87,16 +87,4 @@ terra Font:setsize(size: num)
 	if self.size_changed ~= nil then
 		self.size_changed(self)
 	end
-end
-
-terra TextRenderer:font(load: FontLoadFunc, unload: FontUnloadFunc)
-	assert(self.fonts.items.len <= 65000)
-	var font_id = self.fonts:alloc()
-	var font = self.fonts:at(font_id)
-	font:init(self, load, unload)
-	return font_id
-end
-
-terra TextRenderer:free_font(font_id: uint16)
-	self.fonts:release(font_id)
 end

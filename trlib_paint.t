@@ -9,55 +9,49 @@ require'trlib_rasterize'
 
 --NOTE: clip_left and clip_right are relative to glyph run's origin.
 terra TextRenderer:paint_glyph_run(
-	cr: &GraphicsContext, run: &GlyphRun, i: int, j: int,
+	cr: &GraphicsContext, gr: &GlyphRun, i: int, j: int,
 	ax: num, ay: num, clip: bool, clip_left: num, clip_right: num
-)
-	for i = i, j do
+): {}
 
-		var glyph_index = run.info[i].codepoint
-		var px = iif(i > 0, run.pos[i-1].x_advance / 64.0, 0.0)
-		var ox = run.pos[i].x_offset / 64.0
-		var oy = run.pos[i].y_offset / 64.0
+	if not clip and j > 2 and gr.font_size < 50 then
+		var sr, sx, sy = self:rasterize_glyph_run(gr, ax, ay)
+		self:paint_surface(cr, sr, sx, sy, false, 0, 0)
+		inc(self.paint_glyph_num)
+		return
+	end
 
-		var glyph, bmpx, bmpy = self:rasterize_glyph(
-			run.font_id, run.font_size, glyph_index,
-			ax + px + ox,
-			ay - oy
-		)
-
-		if glyph.surface ~= nil then
-			if clip then
-				--make clip_left and clip_right relative to bitmap's left edge.
-				clip_left  = clip_left + ax - bmpx
-				clip_right = clip_right + ax - bmpx
-			end
-			--print('paint_glyph', i, bmpx, bmpy, clip, clip_left, clip_right)
-			inc(self.paint_glyph_num)
-			self:paint_glyph(cr, glyph, bmpx, bmpy, clip, clip_left, clip_right)
+	for sr, sx, sy in self:glyph_run_surfaces(gr, i, j, ax, ay) do
+		if clip then
+			--make clip_left and clip_right relative to bitmap's left edge.
+			clip_left  = clip_left + ax - sx
+			clip_right = clip_right + ax - sy
 		end
+		self:paint_surface(cr, sr, sx, sy, clip, clip_left, clip_right)
+		inc(self.paint_glyph_num)
 	end
 end
 
-terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
+terra TextRenderer:paint(cr: &GraphicsContext, layout: &Layout)
 
-	if not segs.clip_valid then
-		segs:reset_clip()
+	var segs = &layout.segs
+	var lines = &layout.lines
+
+	if not layout.clip_valid then
+		layout:reset_clip()
 	end
 
-	var lines = &segs.lines
-	for line_i = lines.first_visible, lines.last_visible + 1 do
-		--print('paint line', line_i, lines.array.len)
-		var line = lines.array:at(line_i)
+	for line_i = layout.first_visible_line, layout.last_visible_line + 1 do
+		var line = lines:at(line_i)
 		if line.visible then
 
-			var ax = lines.x + line.x
-			var ay = lines.y + lines.baseline + line.y
+			var ax = layout.x + line.x
+			var ay = layout.y + layout.baseline + line.y
 
 			var seg = line.first_vis
 			while seg ~= nil do
 				if seg.visible then
 
-					var run = seg.glyph_run
+					var gr = layout:glyph_run(seg)
 					var x, y = ax + seg.x, ay
 
 					--[[
@@ -71,9 +65,8 @@ terra TextRenderer:paint(cr: &GraphicsContext, segs: &Segs)
 					else
 					]]
 
-					self:setcontext(cr, seg.text_run)
-					--print('paint seg', seg)
-					self:paint_glyph_run(cr, run, 0, run.len, x, y, false, 0, 0)
+					self:setcontext(cr, seg.span)
+					self:paint_glyph_run(cr, gr, 0, gr.glyphs.len, x, y, false, 0, 0)
 					--end
 
 				end

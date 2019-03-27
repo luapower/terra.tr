@@ -1,6 +1,8 @@
 
 --Mark segments as clipped.
 
+if not ... then require'trlib_test'; return end
+
 setfenv(1, require'trlib_types')
 require'trlib_hit_test'
 
@@ -14,14 +16,15 @@ local box_overlapping = macro(function(x1, y1, w1, h1, x2, y2, w2, h2)
 end)
 
 --NOTE: doesn't take into account side bearings, so it's not 100% accurate!
-terra Segs:clip(x: num, y: num, w: num, h: num)
-	var lines = self.lines
-	x = x - lines.x
-	y = y - lines.y - lines.baseline
-	var first_visible = max(lines:line_at_y(y), 0)
-	var last_visible = min(lines.array.len-1, lines:line_at_y(y + h - 1/256))
+terra Layout:clip(x: num, y: num, w: num, h: num)
+	var lines = &self.lines
+	x = x - self.x
+	y = y - self.y - self.baseline
+	var first_visible = max(self:line_at_y(y), 0)
+	var last_visible = min(lines.len-1, self:line_at_y(y + h - 1.0/256))
+	var first = false
 	for line_i = first_visible, last_visible + 1 do
-		var line = lines.array:at(line_i)
+		var line = lines:at(line_i)
 		var bx = line.x
 		var bw = line.advance_x
 		var by = line.y - line.ascent
@@ -35,16 +38,19 @@ terra Segs:clip(x: num, y: num, w: num, h: num)
 				seg.visible = box_overlapping(x, y, w, h, bx, by, bw, bh)
 				seg = seg.next_vis
 			end
-			first_visible = first_visible or line_i
+			if not first then
+				first_visible = line_i
+				first = true
+			end
 			last_visible = line_i
 		end
 	end
-	lines.first_visible = first_visible
-	lines.last_visible = last_visible
-	lines.clip_valid = true
+	self.first_visible_line = first_visible
+	self.last_visible_line = last_visible
+	self.clip_valid = true
 	return self
 end
 
-terra Segs:reset_clip()
+terra Layout:reset_clip()
 	return self:clip(-inf, -inf, inf, inf)
 end

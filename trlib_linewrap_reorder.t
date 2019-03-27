@@ -9,6 +9,8 @@
 -- in visual order. Following left's `next` member eventually gets us to
 -- `right`. The right seg's `next_vis` member is undefined!
 
+if not ... then require'trlib_test'; return end
+
 setfenv(1, require'trlib_types')
 
 -- Merges range with previous range and returns the previous range.

@@ -9,7 +9,7 @@ require'cairolib'
 color = cairo_argb32_color_t
 default_color_constant_text      = `color {0x000000ff}
 default_color_constant_selection = `color {0x77770077}
-GlyphSurface = cairo_surface_t
+GraphicsSurface = cairo_surface_t
 GraphicsContext = cairo_t
 setfenv(1, require'trlib_types')
 
@@ -39,7 +39,7 @@ terra TextRenderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 		var w1, h1 = box_fit(w, h, bw, bw)
 		var sr = cairo_image_surface_create(format, ceil(w1), ceil(h1))
 		var cr = cairo_create(sr)
-		cr:translate(glyph.offset_x, 0)
+		cr:translate(glyph.subpixel_offset_x, 0)
 		cr:scale(w1 / w, h1 / h)
 		cr:source(sr0, 0, 0)
 		cr:paint()
@@ -72,19 +72,19 @@ terra TextRenderer:unwrap_glyph(glyph: &Glyph)
 end
 
 --NOTE: clip_left and clip_right are relative to bitmap's left edge.
-terra TextRenderer:paint_glyph(
-	cr: &GraphicsContext, glyph: &Glyph,
+terra TextRenderer:paint_surface(
+	cr: &GraphicsContext, sr: &GraphicsSurface,
 	x: num, y: num, clip: bool, clip_left: num, clip_right: num
 )
 	if clip then
 		cr:save()
 		cr:new_path()
 		var x1 = x + clip_left
-		var x2 = x + glyph.surface:width() + clip_right
-		cr:rectangle(x1, y, x2 - x1, glyph.surface:height())
+		var x2 = x + sr:width() + clip_right
+		cr:rectangle(x1, y, x2 - x1, sr:height())
 		cr:clip()
 	end
-	cr:source(glyph.surface, x, y)
+	cr:source(sr, x, y)
 	cr:paint()
 	cr:rgb(0, 0, 0) --clear source
 	if clip then
@@ -92,9 +92,9 @@ terra TextRenderer:paint_glyph(
 	end
 end
 
-terra TextRenderer:setcontext(cr: &GraphicsContext, text_run: &TextRun)
-	var c: cairo_color_t = text_run.color --implicit cast
-	c.alpha = c.alpha * text_run.opacity
+terra TextRenderer:setcontext(cr: &GraphicsContext, span: &Span)
+	var c: cairo_color_t = span.color --implicit cast
+	c.alpha = c.alpha * span.opacity
 	cr:rgba(c)
-	cr:operator(text_run.operator)
+	cr:operator(span.operator)
 end

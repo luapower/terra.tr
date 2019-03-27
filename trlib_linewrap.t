@@ -11,23 +11,24 @@ local reorder_segs = require'trlib_linewrap_reorder'
 --wrap-width == advance-width when it's a hard break or when it's the last
 --segment (which implies a hard break), otherwise it's advance-width minus
 --the width of the last trailing space.
-terra Segs:nowrap_segments(seg_i: int)
-	var seg = self.array:at(seg_i)
-	if not seg.text_run.nowrap then
-		var wx = seg.glyph_run.wrap_advance_x
-		var ax = seg.glyph_run.advance_x
-		wx = iif(seg.linebreak ~= BREAK_NONE or seg_i == self.array.len-1, ax, wx)
+terra Layout:nowrap_segments(seg_i: int)
+	var seg = self.segs:at(seg_i)
+	var gr = &self.tr.glyph_runs:pair(seg.glyph_run_id).key
+	if not seg.span.nowrap then
+		var wx = gr.wrap_advance_x
+		var ax = gr.advance_x
+		wx = iif(seg.linebreak ~= BREAK_NONE or seg_i == self.segs.len-1, ax, wx)
 		return wx, ax, seg_i+1
 	end
 	var ax = 0
-	var n = self.array.len
+	var n = self.segs.len
 	for i = seg_i, n do
-		var seg = self.array(i)
-		var ax1 = ax + seg.glyph_run.advance_x
+		var seg = self.segs(i)
+		var ax1 = ax + gr.advance_x
 		if i == n-1 or seg.linebreak ~= BREAK_NONE then --hard break, w == ax
 			return ax1, ax1, i+1
-		elseif i < n-1 and not self.array(i+1).text_run.nowrap then
-			var wx = ax + seg.glyph_run.wrap_advance_x
+		elseif i < n-1 and not self.segs(i+1).span.nowrap then
+			var wx = ax + gr.wrap_advance_x
 			return wx, ax1, i+1
 		end
 		ax = ax1
@@ -35,11 +36,11 @@ terra Segs:nowrap_segments(seg_i: int)
 end
 
 --minimum width that the text can wrap into without overflowing.
-terra Segs:min_w()
+terra Layout:min_w()
 	var min_w = self._min_w
 	if min_w == -inf then
 		min_w = 0
-		var seg_i, n = 0, self.array.len
+		var seg_i, n = 0, self.segs.len
 		while seg_i < n do
 			var segs_wx, _, next_seg_i = self:nowrap_segments(seg_i)
 			min_w = max(min_w, segs_wx)
@@ -51,16 +52,17 @@ terra Segs:min_w()
 end
 
 --text width when there's no wrapping.
-terra Segs:max_w()
+terra Layout:max_w()
 	var max_w = self._max_w
 	if max_w == inf then
 		max_w = 0
 		var line_w = 0
-		var n = self.array.len
+		var n = self.segs.len
 		for i = 0, n do
-			var seg = self.array(i)
-			var wx = seg.glyph_run.wrap_advance_x
-			var ax = seg.glyph_run.advance_x
+			var seg = self.segs(i)
+			var gr = &self.tr.glyph_runs:pair(seg.glyph_run_id).key
+			var wx = gr.wrap_advance_x
+			var ax = gr.advance_x
 			var linebreak = seg.linebreak ~= BREAK_NONE or i == n
 			wx = iif(linebreak, ax, wx)
 			line_w = line_w + wx
@@ -74,19 +76,19 @@ terra Segs:max_w()
 	return max_w
 end
 
-terra Segs:wrap(w: num)
+terra Layout:wrap(w: num)
 
 	var lines = &self.lines
-	lines.array.len = 0
-	lines.h = 0
-	lines.spaced_h = 0
-	lines.baseline = 0
-	lines.max_ax = 0
-	lines.first_visible = 0
-	lines.last_visible = -1
+	lines.len = 0
+	self.h = 0
+	self.spaced_h = 0
+	self.baseline = 0
+	self.max_ax = 0
+	self.first_visible_line = 0
+	self.last_visible_line = -1
 
 	--do line wrapping and compute line advance.
-	var seg_i, seg_count = 0, self.array.len
+	var seg_i, seg_count = 0, self.segs.len
 	var line: &Line = nil
 	while seg_i < seg_count do
 		var segs_wx, segs_ax, next_seg_i = self:nowrap_segments(seg_i)
@@ -98,12 +100,12 @@ terra Segs:wrap(w: num)
 
 		if hardbreak or softbreak then
 
-			var prev_seg = self.array:at(seg_i-1, nil) --last segment of the previous line
+			var prev_seg = self.segs:at(seg_i-1, nil) --last segment of the previous line
 
 			--adjust last segment due to being wrapped.
 			--we can do this because the last segment stays last under bidi reordering.
 			if softbreak then
-				var prev_run = prev_seg.glyph_run
+				var prev_run = self:glyph_run(prev_seg)
 				line.advance_x = line.advance_x - prev_seg.advance_x
 				prev_seg.advance_x = prev_run.wrap_advance_x
 				prev_seg.x = iif(prev_run.rtl,
@@ -117,9 +119,9 @@ terra Segs:wrap(w: num)
 				prev_seg.next_vis = nil
 			end
 
-			line = lines.array:add()
-			line.index = lines.array.len-1
-			line.first = self.array:at(seg_i) --first segment in text order
+			line = lines:add()
+			line.index = lines.len-1
+			line.first = self.segs:at(seg_i) --first segment in text order
 			line.first_vis = line.first --first segment in visual order
 			line.x = 0
 			line.y = 0
@@ -136,23 +138,23 @@ terra Segs:wrap(w: num)
 		line.advance_x = line.advance_x + segs_ax
 
 		for seg_i = seg_i, next_seg_i do
-			var seg = self.array:at(seg_i)
-			seg.advance_x = seg.glyph_run.advance_x
+			var seg = self.segs:at(seg_i)
+			seg.advance_x = self:glyph_run(seg).advance_x
 			seg.x = 0
 			seg.wrapped = false
-			seg.next = self.array:at(seg_i+1, nil)
+			seg.next = self.segs:at(seg_i+1, nil)
 			seg.next_vis = seg.next
 		end
 
-		var last_seg = self.array:at(next_seg_i-1)
+		var last_seg = self.segs:at(next_seg_i-1)
 		if last_seg.linebreak ~= BREAK_NONE then
 			if last_seg.linebreak == BREAK_PARA then
 				--we use this particular segment's `paragraph_spacing` property
 				--since this is the segment asking for a paragraph break.
 				--TODO: is there a more logical way to select this property?
-				line.spacing = last_seg.text_run.paragraph_spacing
+				line.spacing = last_seg.span.paragraph_spacing
 			else
-				line.spacing = last_seg.text_run.hardline_spacing
+				line.spacing = last_seg.span.hardline_spacing
 			end
 			line = nil
 		end
@@ -162,16 +164,16 @@ terra Segs:wrap(w: num)
 
 	--reorder RTL segments on each line separately and concatenate the runs.
 	if self.bidi then
-		for _,line in lines.array do
+		for _,line in lines do
 			--UAX#9/L2: reorder segments based on their bidi_level property.
 			line.first_vis = reorder_segs(line.first_vis, &self.tr.ranges)
 		end
 	end
 
 	var last_line: &Line = nil
-	for _,line in lines.array do
+	for _,line in lines do
 
-		lines.max_ax = max(lines.max_ax, line.advance_x)
+		self.max_ax = max(self.max_ax, line.advance_x)
 
 		--compute line ascent and descent scaling based on paragraph spacing.
 		var ascent_factor = iif(last_line ~= nil, last_line.spacing, 1)
@@ -181,11 +183,11 @@ terra Segs:wrap(w: num)
 		var seg = line.first_vis
 		while seg ~= nil do
 			--compute line's vertical metrics.
-			var run = seg.glyph_run
+			var run = self:glyph_run(seg)
 			line.ascent = max(line.ascent, run.ascent)
 			line.descent = min(line.descent, run.descent)
 			var run_h = run.ascent - run.descent
-			var line_spacing = seg.text_run.line_spacing
+			var line_spacing = seg.span.line_spacing
 			var half_line_gap = run_h * (line_spacing - 1) / 2
 			line.spaced_ascent
 				= max(line.spaced_ascent,
@@ -207,21 +209,21 @@ terra Segs:wrap(w: num)
 		last_line = line
 	end
 
-	var first_line = lines.array:at(0, nil)
+	var first_line = lines:at(0, nil)
 	if first_line ~= nil then
-		var last_line = lines.array:at(lines.array.len-1)
+		var last_line = lines:at(lines.len-1)
 		--compute the bounding-box height excluding paragraph spacing.
-		lines.h =
+		self.h =
 			first_line.ascent
 			+ last_line.y
 			- last_line.descent
 		--compute the bounding-box height including paragraph spacing.
-		lines.spaced_h =
+		self.spaced_h =
 			first_line.spaced_ascent
 			+ last_line.y
 			- last_line.spaced_descent
 		--set the default visible line range.
-		lines.last_visible = lines.array.len-1
+		self.last_visible_line = lines.len-1
 	end
 
 	return self

@@ -1,6 +1,7 @@
 
 require'trlib_paint_cairo'
 require'cairolib'
+require'utf8lib'
 setfenv(1, require'trlib')
 
 terra load_font(self: &Font, file_data: &&opaque, file_size: &int64)
@@ -9,7 +10,6 @@ end
 
 terra unload_font(self: &Font, file_data: &&opaque, file_size: &int64)
 	free(@file_data)
-	@file_size = 0
 end
 
 local s = 'Hello World\nNew Line'
@@ -23,41 +23,41 @@ terra test()
 
 	var font_id = tr:font(load_font, unload_font)
 
-	var runs: TextRuns; runs:init()
-	var len = [#s]
-	var s: rawstring = s
-	for i=0,len do
-		assert(s[i] > 0)
-		runs.text:add(s[i])
-	end
+	var layout: Layout; layout:init(&tr)
+	utf8.decode.toarr([s], [#s], &layout.text, maxint, utf8.REPLACE, utf8.INVALID)
 
-	var r: TextRun; r:init()
-	r.offset = 0
-	r.font_id = font_id
-	r.font_size = 12
-	r.color = 0xffffffff
-	runs.array:push(r)
+	var sp: Span; sp:init()
+	sp.offset = 0
+	sp.font_id = font_id
+	sp.font_size = 12
+	sp.color = 0xffffffff
+	layout.spans:push(sp)
 
 	probe'start'
 
-	var segs: Segs; segs:init(&tr)
-	tr:shape(&runs, &segs)
-	segs:wrap(sr:width())
-	segs:align(0, 0, sr:width(), sr:height(), ALIGN_LEFT, ALIGN_TOP)
-	probe'shape/wrap/align'
+	layout:shape()
+	layout:wrap(sr:width())
+	layout:align(0, 0, sr:width(), sr:height(), ALIGN_LEFT, ALIGN_TOP)
+	layout:clip(0, 0, sr:width(), sr:height())
+	assert(layout.clip_valid)
+	probe'shape/wrap/align/clip'
 
 	tr.paint_glyph_num = 0
-	var glyphs_per_frame = 8500
+	--var glyphs_per_frame = 8500
+	var glyphs_per_frame = 1800
+	var wanted_fps = 60
 	var t0 = clock()
 	var times = 60
 	for i=0,times do
-		tr:paint(cr, &segs)
+		cr:rgb(0, 0, 0)
+		cr:paint()
+		tr:paint(cr, &layout)
 	end
 	var dt = clock() - t0
-	pfn('%.2f\tpaint %d times, %d glyphs, %.2f%% of a frame @60fps',
-		dt, times, tr.paint_glyph_num, 100 * 8500 * 60 * dt / tr.paint_glyph_num)
+	pfn('%.2fs\tpaint %d times, %d glyphs, %.2f%% of a frame @60fps',
+		dt, times, tr.paint_glyph_num, 100 * glyphs_per_frame * wanted_fps * dt / tr.paint_glyph_num)
 
-	segs:free()
+	layout:free()
 
 	sr:save_png'trlib_test.png'
 
@@ -65,7 +65,5 @@ terra test()
 	pfn('Glyph cache count    : %d', tr.glyphs.count)
 	pfn('GlyphRun cache size  : %d', tr.glyph_runs.size)
 	pfn('GlyphRun cache count : %d', tr.glyph_runs.count)
-
-	runs:free()
 end
 test()

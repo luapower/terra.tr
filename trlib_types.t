@@ -13,6 +13,7 @@ require'phf'
 require'fixedfreelist'
 require'lrucache'
 require'arrayfreelist'
+require'box2dlib'
 
 require_h'freetype_h'
 require_h'harfbuzz_h'
@@ -34,6 +35,25 @@ memhash = macro(function(size_t, k, h, len)
 	local xxh = sizeof(size_t) == 8 and XXH64 or XXH32
 	return `[size_t](xxh([&opaque](k), len * sizeof(T), h))
 end)
+
+--create getters and setters for converting from/to fixed-point decimal fields.
+function fixpointfields(T)
+	for i,e in ipairs(T.entries) do
+		local priv = e.field
+		local pub, digits, decimals = priv:match'^(.-)_(%d+)_(%d+)$'
+		if pub then
+			local intbits = tonumber(digits) - tonumber(decimals)
+			local factor = 2^decimals
+			T.methods['get_'..pub] = macro(function(self)
+				return `[num](self.[priv] / [num](factor))
+			end)
+			local maxn = 2^intbits * 64 - 1
+			T.methods['set_'..pub] = macro(function(self, x)
+				return quote self.[priv] = clamp(x * factor, 0, maxn) end
+			end)
+		end
+	end
+end
 
 --enums ----------------------------------------------------------------------
 
@@ -58,15 +78,15 @@ BREAK_NONE = 0
 BREAK_LINE = 1
 BREAK_PARA = 2
 
---types ----------------------------------------------------------------------
+--base types -----------------------------------------------------------------
 
+num = float
 font_id_t = uint16
-cursor_offset_t = int16
-cursor_x_t = num
 
 struct TextRenderer;
-
 struct Font;
+
+--font type ------------------------------------------------------------------
 
 FontLoadFunc   = {&Font, &&opaque, &int64} -> {}
 FontUnloadFunc = {&Font, &&opaque, &int64} -> {}
@@ -94,9 +114,11 @@ struct Font {
 	size_changed: {&Font} -> {};
 }
 
-TextRunState = TextRunState or struct {}
+--layout type ----------------------------------------------------------------
 
-struct TextRun (gettersandsetters) {
+SpanState = SpanState or struct {}
+
+struct Span (gettersandsetters) {
 	offset: int; --offset in the text, in codepoints.
 	font_id: font_id_t;
 	font_size_16_6: uint16;
@@ -111,21 +133,11 @@ struct TextRun (gettersandsetters) {
 	color: color;
 	opacity: double; --the opacity level in 0..1 (1).
 	operator: int;   --blending operator (CAIRO_OPERATOR_OVER).
-	_state: TextRunState;
+	_state: SpanState;
 }
+fixpointfields(Span)
 
-local function getset_dec6(T, pub, priv)
-	T.methods['get_'..pub] = macro(function(self)
-		return `self.[priv] / 64.0
-	end)
-	T.methods['set_'..pub] = macro(function(self, x)
-		return quote self.[priv] = clamp(x, 0, 0x3ff) * 64 end
-	end)
-end
-
-getset_dec6(TextRun, 'font_size', 'font_size_16_6')
-
-terra TextRun:init()
+terra Span:init()
 	fill(self)
 	self.script = HB_SCRIPT_COMMON
 	self.dir = DIR_AUTO
@@ -137,119 +149,27 @@ terra TextRun:init()
 	self.operator = 2 --CAIRO_OPERATOR_OVER
 end
 
-terra TextRun:free()
+terra Span:free()
 	self.features:free()
 end
-
-struct TextRuns {
-	array: arr(TextRun);
-	text: arr(codepoint);
-	maxlen: int;
-}
-
-terra TextRuns:eof(i: int)
-	var following_run = self.array:at(i + 1, nil)
-	return iif(following_run ~= nil, following_run.offset, self.text.len)
-end
-
-terra TextRuns:init()
-	fill(self)
-	self.array:init()
-	self.text:init()
-end
-
-terra TextRuns:free()
-	self.text:free()
-	self.array:call'free'
-	self.array:free()
-end
-
-function TextRuns.metamethods.__cast(from, to, exp)
-	if from == niltype then
-		return `TextRuns {
-			array = [arr(TextRun)](nil);
-			text = [arr(codepoint)](nil);
-			maxlen = maxint;
-		}
-	else
-		error'invalid cast'
-	end
-end
-
-struct GlyphRun (gettersandsetters) {
-	--cache key fields: must not have alignment holes!
-	text            : arr(codepoint);
-	features        : arr(hb_feature_t);
-	lang            : hb_language_t;
-	script          : hb_script_t;
-	font_id         : font_id_t;
-	font_size_16_6  : uint16;
-	rtl             : bool;
-	--resulting glyphs and glyph metrics
-	hb_buf          : &hb_buffer_t; --anchored
-	info            : &hb_glyph_info_t; --0..len-1
-	pos             : &hb_glyph_position_t; --0..len-1
-	len             : int16; --glyph count
-	--for positioning in horizontal flow
-	ascent          : num;
-	descent         : num;
-	advance_x       : num;
-	wrap_advance_x  : num;
-	--for cursor positioning and hit testing
-	cursor_offsets  : &cursor_offset_t; --0..text_len
-	cursor_xs       : &cursor_x_t; --0..text_len
-	trailing_space  : bool;
-}
-
-getset_dec6(GlyphRun, 'font_size', 'font_size_16_6')
-
-local key_offset = offsetof(GlyphRun, 'lang')
-local key_size = offsetof(GlyphRun, 'rtl') + sizeof(bool) - key_offset
-
-terra GlyphRun:__hash32(h: uint32)
-	h = hash(uint32, [&char](self) + key_offset, h, key_size)
-	h = hash(uint32, &self.text, h)
-	h = hash(uint32, &self.features, h)
-	return h
-end
-
-terra GlyphRun:__eq(other: &GlyphRun)
-	return equal(
-			[&char](self)  + key_offset,
-			[&char](other) + key_offset, key_size)
-		and self.text == other.text
-		and self.features == other.features
-end
-
-terra GlyphRun:__memsize()
-	return sizeof(GlyphRun)
-		+ self.text:__memsize()
-		+ self.features:__memsize()
-		+ (sizeof(cursor_offset_t) + sizeof(cursor_x_t)) * (self.text.len + 1)
-		+ (sizeof(hb_glyph_info_t) + sizeof(hb_glyph_position_t)) * self.len
-end
-
-GlyphRunCache = lrucache {key_t = GlyphRun}
-
-struct Line;
 
 struct SubSeg {
 	i: int16;
 	j: int16;
-	text_run: &TextRun;
-	clip_left: cursor_x_t;
-	clip_right: cursor_x_t;
+	span: &Span;
+	clip_left: num;
+	clip_right: num;
 };
 
 struct Seg {
-	glyph_run: &GlyphRun;
+	glyph_run_id: uint;
 	line_num: int; --physical line number
 	--for line breaking
 	linebreak: enum;
 	--for bidi reordering
 	bidi_level: FriBidiLevel;
 	--for cursor positioning
-	text_run: &TextRun; --text run of the first sub-segment
+	span: &Span; --span of the first sub-segment
 	offset: int; --codepoint offset into the text
 	--slots filled by layouting
 	x: num;
@@ -260,38 +180,6 @@ struct Seg {
 	visible: bool; --segment is not entirely clipped
 	subsegs: arr(SubSeg);
 }
-
---expose Seg.glyph_run.<field> as Seg.<field> since glyph runs are an
---implementation detail coming from the fact that we are caching shaped words.
-forwardproperties('glyph_run')(Seg)
-
-struct Lines;
-
-struct Segs {
-	array: arr(Seg);
-	tr: &TextRenderer;
-	bidi: bool; --`true` if the text is bidirectional.
-	base_dir: FriBidiParType; --base paragraph direction of the first paragraph
-	lines: Lines;
-	--cached computed values
-	_min_w: num;
-	_max_w: num;
-	page_h: num;
-	clip_valid: bool;
-}
-
-terra Segs:init(tr: &TextRenderer)
-	fill(self)
-	self.array:init()
-	self.tr = tr
-	self.base_dir = FRIBIDI_PAR_ON
-	self.lines.array:init()
-end
-
-terra Segs:free()
-	self.lines.array:free()
-	self.array:free()
-end
 
 struct Line {
 	index: int;
@@ -308,71 +196,155 @@ struct Line {
 	visible: bool; --entirely clipped or not
 }
 
-struct Lines {
-	array: arr(Line);
+struct Layout {
+	tr: &TextRenderer;
+	--input
+	spans: arr(Span);
+	text: arr(codepoint);
+	maxlen: int;
+	--shaping output: segments and bidi info
+	segs: arr(Seg);
+	bidi: bool; --`true` if the text is bidirectional.
+	base_dir: FriBidiParType; --base paragraph direction of the first paragraph
+	--wrap/align output: lines
+	lines: arr(Line);
 	max_ax: num; --text's maximum x-advance (equivalent to text's width).
 	h: num; --text's wrapped height.
 	spaced_h: num; --text's wrapped height including line and paragraph spacing.
 	baseline: num;
-	first_visible: int;
-	last_visible: int;
+	first_visible_line: int;
+	last_visible_line: int;
 	min_x: num;
 	x: num;
 	y: num;
 	align_x: enum;
 	clip_valid: bool;
+	--cached computed values
+	_min_w: num;
+	_max_w: num;
+	page_h: num;
 }
 
-struct SegRange {
-	left: &Seg;
-	right: &Seg;
-	prev: &SegRange;
-	bidi_level: int8;
-}
+Layout.methods.glyph_run = macro(function(self, seg)
+	return `&self.tr.glyph_runs:pair(seg.glyph_run_id).key
+end)
 
-RangesFreelist = fixedfreelist(SegRange)
-
---TODO: finish this or drop it
-function Segs.metamethods.__cast(from, to, exp)
-	if from == niltype then
-		return `Segs {
-			array = [arr(Seg)](nil);
-			tr = nil;
-			text_runs = nil;
-			bidi = false;
-			base_dir = DIR_AUTO;
-			clip_valid = false;
-		}
-	else
-		error'invalid cast'
-	end
+terra Layout:eof(i: int)
+	var next_span = self.spans:at(i+1, nil)
+	return iif(next_span ~= nil, next_span.offset, self.text.len)
 end
+
+terra Layout:init(tr: &TextRenderer)
+	fill(self)
+	self.maxlen = maxint
+	self.base_dir = FRIBIDI_PAR_ON
+	self.tr = tr
+end
+
+terra Layout:free()
+	self.lines:free()
+	self.segs:free()
+	self.text:free()
+	self.spans:call'free'
+	self.spans:free()
+end
+
+newcast(Layout, niltype, Layout.empty)
+
+--glyph run type -------------------------------------------------------------
+
+struct GlyphInfo (gettersandsetters) {
+	glyph_index: uint;
+	x: num; --glyph origin relative to glyph run origin
+	image_x_16_6: int16; --glyph image origin relative to glyph origin
+	image_y_16_6: int16;
+	cluster: uint16;
+}
+fixpointfields(GlyphInfo)
+
+struct GlyphRun (gettersandsetters) {
+	--cache key fields: no alignment holes between lang..rtl!
+	text            : arr(codepoint);
+	features        : arr(hb_feature_t);
+	lang            : hb_language_t;     --8
+	script          : hb_script_t;       --4
+	font_id         : font_id_t;         --2
+	font_size_16_6  : uint16;            --2
+	rtl             : bool;              --1
+	--resulting glyphs and glyph metrics
+	glyphs          : arr(GlyphInfo);
+	--for positioning in horizontal flow
+	ascent          : num;
+	descent         : num;
+	advance_x       : num;
+	wrap_advance_x  : num;
+	--cached surfaces for each subpixel-offset with painted glyph on them.
+	surfaces        : arr(&GraphicsSurface);
+	surfaces_memsize : uint32;
+	surface_x       : int16;
+	surface_y       : int16;
+	--for cursor positioning and hit testing (len = text_len+1)
+	cursor_offsets  : arr(uint16);
+	cursor_xs       : arr(num);
+	trailing_space  : bool;
+}
+fixpointfields(GlyphRun)
+
+local key_offset = offsetof(GlyphRun, 'lang')
+local key_size = offsetafter(GlyphRun, 'rtl') - key_offset
+
+terra GlyphRun:__hash32(h: uint32)
+	h = hash(uint32, [&char](self) + key_offset, h, key_size)
+	h = hash(uint32, &self.text, h)
+	h = hash(uint32, &self.features, h)
+	return h
+end
+
+terra GlyphRun:__eq(other: &GlyphRun)
+	return equal(
+			[&char](self)  + key_offset,
+			[&char](other) + key_offset, key_size)
+		and equal(&self.text, &other.text)
+		and equal(&self.features, &other.features)
+end
+
+terra GlyphRun:__memsize()
+	return
+		  memsize(self.text)
+		+ memsize(self.features)
+		+ memsize(self.glyphs)
+		+ memsize(self.surfaces)
+		+ memsize(self.cursor_offsets)
+		+ memsize(self.cursor_xs)
+		+ self.surfaces_memsize
+end
+
+--glyph type -----------------------------------------------------------------
 
 struct Glyph (gettersandsetters) {
 	--cache key: must not have alignment holes!
 	font_id         : font_id_t;
 	font_size_16_6  : uint16;
 	glyph_index     : uint;
-	offset_x_8_6    : uint8; -- 0..63 representing 0..1
+	subpixel_offset_x_8_6 : uint8; -- 0..63 representing 0..1
 	--graphics surface
-	surface: &GlyphSurface;
-	x: int16; y: int16; --bitmap coordinates relative to the glyph origin
+	surface: &GraphicsSurface;
+	surface_x: int16; --bitmap coordinates relative to the glyph origin
+	surface_y: int16;
 }
+fixpointfields(Glyph)
 
 Glyph.empty = `Glyph {
 	font_id = -1;
 	font_size_16_6 = 0;
-	offset_x_8_6 = 0;
+	subpixel_offset_x_8_6 = 0;
 	glyph_index = 0;
 	surface = nil;
-	x = 0; y = 0;
+	surface_x = 0; surface_y = 0;
 }
 
-getset_dec6(Glyph, 'font_size', 'font_size_16_6')
-getset_dec6(Glyph, 'offset_x', 'offset_x_8_6')
-
 local key_offset = offsetof(Glyph, 'font_id')
-local key_size = offsetof(Glyph, 'offset_x_8_6') + sizeof(Glyph:getfield'offset_x_8_6'.type)
+local key_size = offsetafter(Glyph, 'subpixel_offset_x_8_6') - key_offset
 
 terra Glyph:__hash32(h: uint32)
 	return hash(uint32, [&char](self) + key_offset, h, key_size)
@@ -385,32 +357,30 @@ terra Glyph:__eq(other: &Glyph)
 end
 
 terra Glyph:__memsize()
-	return sizeof(Glyph)
-		+ iif(self.surface ~= nil,
-			self.surface:stride() * self.surface:height(), 0)
+	return iif(self.surface ~= nil,
+		1024 + self.surface:stride() * self.surface:height(), 0)
 end
 
-GlyphCache = lrucache {key_t = Glyph}
+--renderer type --------------------------------------------------------------
 
-struct Selection {
-	segs: &Segs;
-	offset: int;
-	len: int;
-	color: color;
+struct SegRange {
+	left: &Seg;
+	right: &Seg;
+	prev: &SegRange;
+	bidi_level: int8;
 }
 
-terra Selection:init(segs: &Segs)
-	self.segs = segs
-	self.offset = 0
-	self.len = 0
-	self.color = default_color_constant_selection
-end
+RangesFreelist = fixedfreelist(SegRange)
+
+GlyphRunCache = lrucache {key_t = GlyphRun}
+GlyphCache = lrucache {key_t = Glyph}
 
 struct TextRenderer (gettersandsetters) {
 
 	--rasterizer config
 	font_size_resolution: num;
 	subpixel_x_resolution: num;
+	word_subpixel_x_resolution: num;
 
 	ft_lib: FT_Library;
 
@@ -442,5 +412,21 @@ struct TextRenderer (gettersandsetters) {
 
 	paint_glyph_num: int;
 }
+
+--[[
+struct Selection {
+	segs: &Segs;
+	offset: int;
+	len: int;
+	color: color;
+}
+
+terra Selection:init(segs: &Segs)
+	self.segs = segs
+	self.offset = 0
+	self.len = 0
+	self.color = default_color_constant_selection
+end
+]]
 
 return trlib

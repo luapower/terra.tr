@@ -1,16 +1,18 @@
 
 --Fit line-wrapped text inside a box.
 
+if not ... then require'trlib_test'; return end
+
 setfenv(1, require'trlib_types')
 
-terra Segs:align(x: num, y: num, w: num, h: num, align_x: enum, align_y: enum)
+terra Layout:align(x: num, y: num, w: num, h: num, align_x: enum, align_y: enum)
 
 	var lines = &self.lines
-	if lines.array.len == 0 then return self end
-	if w == -1 then w = lines.max_ax end   --self-box
-	if h == -1 then h = lines.spaced_h end --self-box
+	if lines.len == 0 then return self end
+	if w == -1 then w = self.max_ax end   --self-box
+	if h == -1 then h = self.spaced_h end --self-box
 
-	lines.min_x = inf
+	self.min_x = inf
 
 	if align_x == ALIGN_AUTO then
 		    if self.base_dir == DIR_AUTO then align_x = ALIGN_LEFT
@@ -21,45 +23,42 @@ terra Segs:align(x: num, y: num, w: num, h: num, align_x: enum, align_y: enum)
 		end
 	end
 
-	for line_i, line in lines.array do
+	for line_i, line in lines do
 		--compute line's aligned x position relative to the textbox origin.
 		if align_x == ALIGN_RIGHT then
 			line.x = w - line.advance_x
 		elseif align_x == ALIGN_CENTER then
 			line.x = (w - line.advance_x) / 2.0
 		end
-		lines.min_x = min(lines.min_x, line.x)
+		self.min_x = min(self.min_x, line.x)
 	end
 
 	--compute first line's baseline based on vertical alignment.
-	var first_line = lines.array:at( 0, nil)
-	var last_line  = lines.array:at(lines.array.len-1, nil)
+	var first_line = lines:at( 0, nil)
+	var last_line  = lines:at(lines.len-1, nil)
 	if first_line == nil then
-		lines.baseline = 0
+		self.baseline = 0
 	else
 		if align_y == ALIGN_TOP then
-			lines.baseline = first_line.spaced_ascent
+			self.baseline = first_line.spaced_ascent
 		elseif align_y == ALIGN_BOTTOM then
-			lines.baseline = h - (last_line.y - last_line.spaced_descent)
+			self.baseline = h - (last_line.y - last_line.spaced_descent)
 		elseif align_y == ALIGN_CENTER then
-			lines.baseline = first_line.spaced_ascent + (h - lines.spaced_h) / 2
+			self.baseline = first_line.spaced_ascent + (h - self.spaced_h) / 2
 		end
 	end
 
 	--store textbox's origin, which can be changed anytime after layouting.
-	lines.x = x
-	lines.y = y
+	self.x = x
+	self.y = y
 
 	--store textbox's height to be used for page up/down cursor navigation.
 	self.page_h = h
 
 	--store the actual x-alignment for adjusting the caret x-coord.
-	lines.align_x = align_x
+	self.align_x = align_x
 
-	if lines.clip_valid then
-		--must reset clip on paint() if clip() won't be called until paint().
-		lines.clip_valid = false
-	end
+	self.clip_valid = false
 
 	return self
 end
