@@ -16,18 +16,18 @@ terra Renderer:paint_glyph_run(
 	if not clip and j > 2 and gr.font_size < 50 then
 		var sr, sx, sy = self:rasterize_glyph_run(gr, ax, ay)
 		self:paint_surface(cr, sr, sx, sy, false, 0, 0)
-		inc(self.paint_glyph_num)
+		inc(self.paint_glyph_num, j)
 		return
 	end
 
-	for sr, sx, sy in self:glyph_run_surfaces(gr, i, j, ax, ay) do
+	for sr, sx, sy in self:glyph_surfaces(gr, i, j, ax, ay) do
 		if clip then
 			--make clip_left and clip_right relative to bitmap's left edge.
 			clip_left  = clip_left + ax - sx
 			clip_right = clip_right + ax - sy
 		end
 		self:paint_surface(cr, sr, sx, sy, clip, clip_left, clip_right)
-		inc(self.paint_glyph_num)
+		inc(self.paint_glyph_num, j-i)
 	end
 end
 

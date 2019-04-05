@@ -351,7 +351,7 @@ terra Layout:shape()
 		if glyph_run ~= nil then --font loaded successfully
 			var seg = segs:add()
 			seg.glyph_run_id = glyph_run_id
-			seg.line_num = line_num --physical line number (unused)
+			seg.line_num = line_num --physical line number (for code editors)
 			seg.linebreak = linebreak --means this segment _ends_ a line
 			seg.bidi_level = level --for bidi reordering
 			--for cursor positioning
@@ -359,7 +359,7 @@ terra Layout:shape()
 			seg.offset = offset
 			--slots filled by layouting
 			seg.x = 0; seg.advance_x = 0 --seg's x-axis boundaries
-			seg.next = nil--next seg on the same line in text order
+			seg.next = nil --next seg on the same line in text order
 			seg.next_vis = nil --next seg on the same line in visual order
 			seg.wrapped = false --seg is the last on a wrapped line
 			seg.visible = true --seg is not entirely clipped

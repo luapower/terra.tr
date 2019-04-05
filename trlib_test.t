@@ -43,8 +43,7 @@ terra test()
 	probe'shape/wrap/align/clip'
 
 	r.paint_glyph_num = 0
-	--var glyphs_per_frame = 8500
-	var glyphs_per_frame = 1800
+	var glyphs_per_frame = 11000
 	var wanted_fps = 60
 	var t0 = clock()
 	var times = 60

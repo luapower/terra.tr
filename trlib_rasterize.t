@@ -85,7 +85,7 @@ terra Renderer:rasterize_glyph(
 )
 
 	if glyph_index == 0 then --freetype code for "missing glyph"
-		return -1, &empty_glyph, x, y
+		return &empty_glyph, x, y
 	end
 	font_size = snap(font_size, self.font_size_resolution)
 	var sx = floor(x)
@@ -101,24 +101,25 @@ terra Renderer:rasterize_glyph(
 		glyph:rasterize(self)
 		glyph_id, pair = self.glyphs:put(glyph, {})
 	end
+	self.glyphs:forget(glyph_id)
 	var glyph_ref = &pair.key
 	var x = sx + glyph_ref.surface_x
 	var y = sy - glyph_ref.surface_y
-	return glyph_id, glyph_ref, x, y
+	return glyph_ref, x, y
 end
 
-local struct glyph_run_surfaces {
+local struct glyph_surfaces {
 	r: &Renderer;
 	gr: &GlyphRun;
 	i: uint16; j: uint16;
 	ax: num; ay: num;
 }
-glyph_run_surfaces.metamethods.__for = function(self, body)
+glyph_surfaces.metamethods.__for = function(self, body)
 	return quote
 		var gr = self.gr
 		for i: uint16 = self.i, self.j do
 			var g = gr.glyphs:at(i)
-			var glyph_id, glyph, sx, sy = self.r:rasterize_glyph(
+			var glyph, sx, sy = self.r:rasterize_glyph(
 				gr.font_id, gr.font_size, g.glyph_index,
 				self.ax + g.x + g.image_x,
 				self.ay + g.image_y
@@ -129,14 +130,14 @@ glyph_run_surfaces.metamethods.__for = function(self, body)
 		end
 	end
 end
-terra Renderer:glyph_run_surfaces(gr: &GlyphRun, i: uint16, j: uint16, ax: num, ay: num)
-	return glyph_run_surfaces {r = self, gr = gr, i = i, j = j, ax = ax, ay = ay}
+terra Renderer:glyph_surfaces(gr: &GlyphRun, i: uint16, j: uint16, ax: num, ay: num)
+	return glyph_surfaces {r = self, gr = gr, i = i, j = j, ax = ax, ay = ay}
 end
 
 terra Renderer:glyph_run_bbox(gr: &GlyphRun, ax: num, ay: num)
 	var ox = self:word_subpixel_offset_x(ax)
 	var bbox = box2d.bbox()
-	for sr, sx, sy in self:glyph_run_surfaces(gr, 0, gr.glyphs.len, ox, 0) do
+	for sr, sx, sy in self:glyph_surfaces(gr, 0, gr.glyphs.len, ox, 0) do
 		bbox:add(sx, sy, sr:width(), sr:height())
 	end
 	return bbox()
@@ -162,7 +163,7 @@ terra Renderer:rasterize_glyph_run(gr: &GlyphRun, ax: num, ay: num)
 		var srcr = sr:context()
 		srcr:translate(-bx, -by)
 		var ox = self:word_subpixel_offset_x(ax)
-		for gsr, gsx, gsy in self:glyph_run_surfaces(gr, 0, gr.glyphs.len, ox, 0) do
+		for gsr, gsx, gsy in self:glyph_surfaces(gr, 0, gr.glyphs.len, ox, 0) do
 			self:paint_surface(srcr, gsr, gsx, gsy, false, 0, 0)
 		end
 		srcr:free()
