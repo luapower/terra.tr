@@ -40,7 +40,7 @@ local langs_iter = rle_iterator{
 	values_different  = function()        return `lang0 ~= lang1 end,
 }
 
-TextRenderer.methods.lang_spans = macro(function(self, len)
+Renderer.methods.lang_spans = macro(function(self, len)
 	return `langs_iter{&self.langs, 0, len}
 end)
 
@@ -161,7 +161,7 @@ end
 --for harfbuzz, language is a IETF BCP 47 language code + country code,
 --but libunibreak only uses the language code part for a few languages.
 
-terra TextRenderer:init_ub_lang()
+terra Renderer:init_ub_lang()
 	self.HB_LANGUAGE_EN = hb_language_from_string('en', 2)
 	self.HB_LANGUAGE_DE = hb_language_from_string('de', 2)
 	self.HB_LANGUAGE_ES = hb_language_from_string('es', 2)
@@ -170,7 +170,7 @@ terra TextRenderer:init_ub_lang()
 	self.HB_LANGUAGE_ZH = hb_language_from_string('zh', 2)
 end
 
-terra TextRenderer:ub_lang(hb_lang: hb_language_t): rawstring
+terra Renderer:ub_lang(hb_lang: hb_language_t): rawstring
 	    if hb_lang == self.HB_LANGUAGE_EN then return 'en'
 	elseif hb_lang == self.HB_LANGUAGE_DE then return 'de'
 	elseif hb_lang == self.HB_LANGUAGE_ES then return 'es'
@@ -182,11 +182,8 @@ end
 
 terra Layout:shape()
 
-	var r = self.tr
+	var r = self.r
 	var segs = &self.segs
-	for _,seg in segs do
-		seg.subsegs:free()
-	end
 	segs.len = 0
 	--remove cached values.
 	self.lines.len = 0

@@ -19,11 +19,11 @@ local s = glue.readfile'lorem_ipsum.txt'
 terra test()
 	var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1800, 900); defer sr:free()
 	var cr = sr:context(); defer cr:free()
-	var tr: TextRenderer; tr:init(); defer tr:free()
+	var r: Renderer; r:init(); defer r:free()
 
-	var font_id = tr:font(load_font, unload_font)
+	var font_id = r:font(load_font, unload_font)
 
-	var layout: Layout; layout:init(&tr)
+	var layout: Layout; layout:init(&r)
 	utf8.decode.toarr([s], [#s], &layout.text, maxint, utf8.REPLACE, utf8.INVALID)
 
 	var sp: Span; sp:init()
@@ -42,7 +42,7 @@ terra test()
 	assert(layout.clip_valid)
 	probe'shape/wrap/align/clip'
 
-	tr.paint_glyph_num = 0
+	r.paint_glyph_num = 0
 	--var glyphs_per_frame = 8500
 	var glyphs_per_frame = 1800
 	var wanted_fps = 60
@@ -51,19 +51,19 @@ terra test()
 	for i=0,times do
 		cr:rgb(0, 0, 0)
 		cr:paint()
-		tr:paint(cr, &layout)
+		layout:paint(cr)
 	end
 	var dt = clock() - t0
 	pfn('%.2fs\tpaint %d times, %d glyphs, %.2f%% of a frame @60fps',
-		dt, times, tr.paint_glyph_num, 100 * glyphs_per_frame * wanted_fps * dt / tr.paint_glyph_num)
+		dt, times, r.paint_glyph_num, 100 * glyphs_per_frame * wanted_fps * dt / r.paint_glyph_num)
 
 	layout:free()
 
 	sr:save_png'trlib_test.png'
 
-	pfn('Glyph cache size     : %d', tr.glyphs.size)
-	pfn('Glyph cache count    : %d', tr.glyphs.count)
-	pfn('GlyphRun cache size  : %d', tr.glyph_runs.size)
-	pfn('GlyphRun cache count : %d', tr.glyph_runs.count)
+	pfn('Glyph cache size     : %d', r.glyphs.size)
+	pfn('Glyph cache count    : %d', r.glyphs.count)
+	pfn('GlyphRun cache size  : %d', r.glyph_runs.size)
+	pfn('GlyphRun cache count : %d', r.glyph_runs.count)
 end
 test()

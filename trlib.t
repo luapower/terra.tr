@@ -17,7 +17,7 @@ require'trlib_clip'
 require'trlib_rasterize'
 require'trlib_paint'
 
-terra TextRenderer:init()
+terra Renderer:init()
 	fill(self) --this initializes all arr() types.
 
 	self.font_size_resolution  = 1.0/8  --in pixels
@@ -26,17 +26,15 @@ terra TextRenderer:init()
 	self.fonts:init()
 	self.glyphs:init()
 	self.glyphs.max_size = 1024 * 1024 * 20 --20MB net (arbitrary default)
-	self.glyphs.capacity = self.glyphs.max_size
 	self.glyph_runs:init()
 	self.glyph_runs.max_size = 1024 * 1024 * 10 --10MB net (arbitrary default)
-	self.glyph_runs.capacity = self.glyph_runs.max_size
 	self.ranges.min_capacity = 64
 	self.cpstack.min_capacity = 64
 	assert(FT_Init_FreeType(&self.ft_lib) == 0)
 	self:init_ub_lang()
 end
 
-terra TextRenderer:free()
+terra Renderer:free()
 	self.fonts           :free()
 	self.glyphs          :free()
 	self.glyph_runs      :free()
@@ -54,7 +52,17 @@ terra TextRenderer:free()
 	FT_Done_FreeType(self.ft_lib)
 end
 
-terra TextRenderer:font(load: FontLoadFunc, unload: FontUnloadFunc)
+terra Layout:free()
+	self.lines:free()
+	for _,seg in self.segs do
+		self.r.glyph_runs:forget(seg.glyph_run_id)
+	end
+	self.segs:free()
+	self.text:free()
+	self.spans:free()
+end
+
+terra Renderer:font(load: FontLoadFunc, unload: FontUnloadFunc)
 	assert(self.fonts.items.len <= 65000)
 	var font_id = self.fonts:alloc()
 	var font = self.fonts:at(font_id)
@@ -62,7 +70,7 @@ terra TextRenderer:font(load: FontLoadFunc, unload: FontUnloadFunc)
 	return font_id
 end
 
-terra TextRenderer:free_font(font_id: uint16)
+terra Renderer:free_font(font_id: uint16)
 	assert(self.fonts:at(font_id).refcount == 0)
 	self.fonts:release(font_id)
 end

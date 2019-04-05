@@ -3,9 +3,9 @@ if not ... then require'trlib_test'; return end
 
 setfenv(1, require'trlib_types')
 
-terra Font:init(tr: &TextRenderer, load: FontLoadFunc, unload: FontUnloadFunc)
+terra Font:init(r: &Renderer, load: FontLoadFunc, unload: FontUnloadFunc)
 	fill(self)
-	self.tr = tr
+	self.r = r
 	self.load = load
 	self.unload = unload
 	self.ft_load_flags =
@@ -23,7 +23,7 @@ terra Font:ref()
 		if self.file_data == nil then
 			return false
 		end
-		if FT_New_Memory_Face(self.tr.ft_lib, [&uint8](self.file_data),
+		if FT_New_Memory_Face(self.r.ft_lib, [&uint8](self.file_data),
 			self.file_size, 0, &self.ft_face) ~= 0
 		then
 			self.unload(self, &self.file_data, &self.file_size)
@@ -59,7 +59,7 @@ terra Font:setsize(size: num)
 	var size_index: int
 	var fixed_size = size
 	var found = false
-	var best_diff = [num](inf)
+	var best_diff: int16 = 0x7fff
 	for i = 0, self.ft_face.num_fixed_sizes do
 		var sz = self.ft_face.available_sizes[i]
 		var this_size = sz.height
@@ -79,10 +79,9 @@ terra Font:setsize(size: num)
 		FT_Set_Pixel_Sizes(self.ft_face, fixed_size, 0)
 	end
 
-	var ft_scale: num = self.scale / 64.f
 	var m = self.ft_face.size.metrics
-	self.ascent = m.ascender * ft_scale
-	self.descent = m.descender * ft_scale
+	self.ascent  = [num](m.ascender ) * self.scale / 64.f
+	self.descent = [num](m.descender) * self.scale / 64.f
 
 	if self.size_changed ~= nil then
 		self.size_changed(self)

@@ -8,7 +8,7 @@ require'trlib_clip'
 require'trlib_rasterize'
 
 --NOTE: clip_left and clip_right are relative to glyph run's origin.
-terra TextRenderer:paint_glyph_run(
+terra Renderer:paint_glyph_run(
 	cr: &GraphicsContext, gr: &GlyphRun, i: int, j: int,
 	ax: num, ay: num, clip: bool, clip_left: num, clip_right: num
 ): {}
@@ -31,27 +31,27 @@ terra TextRenderer:paint_glyph_run(
 	end
 end
 
-terra TextRenderer:paint(cr: &GraphicsContext, layout: &Layout)
+terra Layout:paint(cr: &GraphicsContext)
 
-	var segs = &layout.segs
-	var lines = &layout.lines
+	var segs = &self.segs
+	var lines = &self.lines
 
-	if not layout.clip_valid then
-		layout:reset_clip()
+	if not self.clip_valid then
+		self:reset_clip()
 	end
 
-	for line_i = layout.first_visible_line, layout.last_visible_line + 1 do
+	for line_i = self.first_visible_line, self.last_visible_line + 1 do
 		var line = lines:at(line_i)
 		if line.visible then
 
-			var ax = layout.x + line.x
-			var ay = layout.y + layout.baseline + line.y
+			var ax = self.x + line.x
+			var ay = self.y + self.baseline + line.y
 
 			var seg = line.first_vis
 			while seg ~= nil do
 				if seg.visible then
 
-					var gr = layout:glyph_run(seg)
+					var gr = self:glyph_run(seg)
 					var x, y = ax + seg.x, ay
 
 					--[[
@@ -65,8 +65,8 @@ terra TextRenderer:paint(cr: &GraphicsContext, layout: &Layout)
 					else
 					]]
 
-					self:setcontext(cr, seg.span)
-					self:paint_glyph_run(cr, gr, 0, gr.glyphs.len, x, y, false, 0, 0)
+					self.r:setcontext(cr, seg.span)
+					self.r:paint_glyph_run(cr, gr, 0, gr.glyphs.len, x, y, false, 0, 0)
 					--end
 
 				end

@@ -13,7 +13,7 @@ local reorder_segs = require'trlib_linewrap_reorder'
 --the width of the last trailing space.
 terra Layout:nowrap_segments(seg_i: int)
 	var seg = self.segs:at(seg_i)
-	var gr = &self.tr.glyph_runs:pair(seg.glyph_run_id).key
+	var gr = &self.r.glyph_runs:pair(seg.glyph_run_id).key
 	if not seg.span.nowrap then
 		var wx = gr.wrap_advance_x
 		var ax = gr.advance_x
@@ -60,7 +60,7 @@ terra Layout:max_w()
 		var n = self.segs.len
 		for i = 0, n do
 			var seg = self.segs(i)
-			var gr = &self.tr.glyph_runs:pair(seg.glyph_run_id).key
+			var gr = &self.r.glyph_runs:pair(seg.glyph_run_id).key
 			var wx = gr.wrap_advance_x
 			var ax = gr.advance_x
 			var linebreak = seg.linebreak ~= BREAK_NONE or i == n
@@ -166,7 +166,7 @@ terra Layout:wrap(w: num)
 	if self.bidi then
 		for _,line in lines do
 			--UAX#9/L2: reorder segments based on their bidi_level property.
-			line.first_vis = reorder_segs(line.first_vis, &self.tr.ranges)
+			line.first_vis = reorder_segs(line.first_vis, &self.r.ranges)
 		end
 	end
 

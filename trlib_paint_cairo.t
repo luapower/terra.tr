@@ -21,7 +21,7 @@ terra box_fit(w: num, h: num, bw: num, bh: num)
 	end
 end
 
-terra TextRenderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
+terra Renderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 
 	var w = bmp.width
 	var h = bmp.rows
@@ -64,7 +64,7 @@ terra TextRenderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 	sr0:free()
 end
 
-terra TextRenderer:unwrap_glyph(glyph: &Glyph)
+terra Renderer:unwrap_glyph(glyph: &Glyph)
 	if glyph.surface ~= nil then
 		glyph.surface:free()
 		glyph.surface = nil
@@ -72,7 +72,7 @@ terra TextRenderer:unwrap_glyph(glyph: &Glyph)
 end
 
 --NOTE: clip_left and clip_right are relative to bitmap's left edge.
-terra TextRenderer:paint_surface(
+terra Renderer:paint_surface(
 	cr: &GraphicsContext, sr: &GraphicsSurface,
 	x: num, y: num, clip: bool, clip_left: num, clip_right: num
 )
@@ -92,7 +92,7 @@ terra TextRenderer:paint_surface(
 	end
 end
 
-terra TextRenderer:setcontext(cr: &GraphicsContext, span: &Span)
+terra Renderer:setcontext(cr: &GraphicsContext, span: &Span)
 	var c: cairo_color_t = span.color --implicit cast
 	c.alpha = c.alpha * span.opacity
 	cr:rgba(c)

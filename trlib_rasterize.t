@@ -21,16 +21,16 @@ terra Font:load_glyph(font_size: num, glyph_index: uint)
 	return ft_glyph
 end
 
-terra Glyph:free(tr: &TextRenderer)
+terra Glyph:free(r: &Renderer)
 	if self.surface == nil then return end
-	var font = tr.fonts:at(self.font_id)
-	font.tr:unwrap_glyph(self)
+	var font = r.fonts:at(self.font_id)
+	font.r:unwrap_glyph(self)
 	font:unref()
 end
 
-terra Glyph:rasterize(tr: &TextRenderer)
+terra Glyph:rasterize(r: &Renderer)
 
-	var font = tr.fonts:at(self.font_id)
+	var font = r.fonts:at(self.font_id)
 
 	var glyph = font:load_glyph(self.font_size, self.glyph_index)
 	if glyph == nil then
@@ -62,15 +62,15 @@ terra Glyph:rasterize(tr: &TextRenderer)
 	then
 		var tmp_bitmap: FT_Bitmap
 		FT_Bitmap_Init(&tmp_bitmap)
-		FT_Bitmap_Convert(font.tr.ft_lib, bitmap, &tmp_bitmap, 4)
+		FT_Bitmap_Convert(font.r.ft_lib, bitmap, &tmp_bitmap, 4)
 		assert(tmp_bitmap.pixel_mode == FT_PIXEL_MODE_GRAY)
 		assert((tmp_bitmap.pitch and 3) == 0)
 
-		font.tr:wrap_glyph(self, &tmp_bitmap)
+		font.r:wrap_glyph(self, &tmp_bitmap)
 
-		FT_Bitmap_Done(font.tr.ft_lib, &tmp_bitmap)
+		FT_Bitmap_Done(font.r.ft_lib, &tmp_bitmap)
 	else
-		font.tr:wrap_glyph(self, bitmap)
+		font.r:wrap_glyph(self, bitmap)
 	end
 
 	self.surface_x = glyph.bitmap_left * font.scale + 0.5
@@ -79,7 +79,7 @@ end
 
 local empty_glyph = constant(Glyph.empty)
 
-terra TextRenderer:rasterize_glyph(
+terra Renderer:rasterize_glyph(
 	font_id: font_id_t, font_size: num,
 	glyph_index: uint, x: num, y: num
 )
@@ -108,7 +108,7 @@ terra TextRenderer:rasterize_glyph(
 end
 
 local struct glyph_run_surfaces {
-	tr: &TextRenderer;
+	r: &Renderer;
 	gr: &GlyphRun;
 	i: uint16; j: uint16;
 	ax: num; ay: num;
@@ -118,7 +118,7 @@ glyph_run_surfaces.metamethods.__for = function(self, body)
 		var gr = self.gr
 		for i: uint16 = self.i, self.j do
 			var g = gr.glyphs:at(i)
-			var glyph_id, glyph, sx, sy = self.tr:rasterize_glyph(
+			var glyph_id, glyph, sx, sy = self.r:rasterize_glyph(
 				gr.font_id, gr.font_size, g.glyph_index,
 				self.ax + g.x + g.image_x,
 				self.ay + g.image_y
@@ -129,11 +129,11 @@ glyph_run_surfaces.metamethods.__for = function(self, body)
 		end
 	end
 end
-terra TextRenderer:glyph_run_surfaces(gr: &GlyphRun, i: uint16, j: uint16, ax: num, ay: num)
-	return glyph_run_surfaces {tr = self, gr = gr, i = i, j = j, ax = ax, ay = ay}
+terra Renderer:glyph_run_surfaces(gr: &GlyphRun, i: uint16, j: uint16, ax: num, ay: num)
+	return glyph_run_surfaces {r = self, gr = gr, i = i, j = j, ax = ax, ay = ay}
 end
 
-terra TextRenderer:glyph_run_bbox(gr: &GlyphRun, ax: num, ay: num)
+terra Renderer:glyph_run_bbox(gr: &GlyphRun, ax: num, ay: num)
 	var ox = self:word_subpixel_offset_x(ax)
 	var bbox = box2d.bbox()
 	for sr, sx, sy in self:glyph_run_surfaces(gr, 0, gr.glyphs.len, ox, 0) do
@@ -142,15 +142,15 @@ terra TextRenderer:glyph_run_bbox(gr: &GlyphRun, ax: num, ay: num)
 	return bbox()
 end
 
-terra TextRenderer:word_subpixel_offset_x(ax: num)
+terra Renderer:word_subpixel_offset_x(ax: num)
 	return snap(ax - floor(ax), self.word_subpixel_x_resolution)
 end
 
-terra TextRenderer:word_subpixel_surface_index(ax: num)
+terra Renderer:word_subpixel_surface_index(ax: num)
 	return self:word_subpixel_offset_x(ax) / self.word_subpixel_x_resolution
 end
 
-terra TextRenderer:rasterize_glyph_run(gr: &GlyphRun, ax: num, ay: num)
+terra Renderer:rasterize_glyph_run(gr: &GlyphRun, ax: num, ay: num)
 	var ox = self:word_subpixel_offset_x(ax)
 	var si = self:word_subpixel_surface_index(ax)
 	var sr = gr.surfaces(si, nil)

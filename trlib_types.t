@@ -83,7 +83,7 @@ BREAK_PARA = 2
 num = float
 font_id_t = uint16
 
-struct TextRenderer;
+struct Renderer;
 struct Font;
 
 --font type ------------------------------------------------------------------
@@ -94,7 +94,7 @@ FontLoadFunc  .__typename_ffi = 'FontLoadFunc'
 FontUnloadFunc.__typename_ffi = 'FontUnloadFunc'
 
 struct Font {
-	tr: &TextRenderer;
+	r: &Renderer;
 	--loading and unloading
 	file_data: &opaque;
 	file_size: int64;
@@ -126,13 +126,13 @@ struct Span (gettersandsetters) {
 	script: hb_script_t;
 	lang: hb_language_t;
 	dir: FriBidiParType; --bidi direction for current and subsequent paragraphs.
-	line_spacing: num; --line spacing multiplication factor (1).
-	hardline_spacing: num; --line spacing MF for hard-breaked lines (1).
-	paragraph_spacing: num; --paragraph spacing MF (2).
+	line_spacing: num; --line spacing multiplication factor (m.f.).
+	hardline_spacing: num; --line spacing m.f. for hard-breaked lines.
+	paragraph_spacing: num; --paragraph spacing m.f.
 	nowrap: bool; --disable word wrapping.
 	color: color;
-	opacity: double; --the opacity level in 0..1 (1).
-	operator: int;   --blending operator (CAIRO_OPERATOR_OVER).
+	opacity: double; --the opacity level in 0..1.
+	operator: int;   --blending operator.
 	_state: SpanState;
 }
 fixpointfields(Span)
@@ -162,7 +162,7 @@ struct SubSeg {
 };
 
 struct Seg {
-	glyph_run_id: uint;
+	glyph_run_id: int;
 	line_num: int; --physical line number
 	--for line breaking
 	linebreak: enum;
@@ -181,6 +181,10 @@ struct Seg {
 	subsegs: arr(SubSeg);
 }
 
+terra Seg:free()
+	self.subsegs:free()
+end
+
 struct Line {
 	index: int;
 	first: &Seg; --first segment in text order
@@ -197,7 +201,7 @@ struct Line {
 }
 
 struct Layout {
-	tr: &TextRenderer;
+	r: &Renderer;
 	--input
 	spans: arr(Span);
 	text: arr(codepoint);
@@ -226,7 +230,7 @@ struct Layout {
 }
 
 Layout.methods.glyph_run = macro(function(self, seg)
-	return `&self.tr.glyph_runs:pair(seg.glyph_run_id).key
+	return `&self.r.glyph_runs:pair(seg.glyph_run_id).key
 end)
 
 terra Layout:eof(i: int)
@@ -234,19 +238,11 @@ terra Layout:eof(i: int)
 	return iif(next_span ~= nil, next_span.offset, self.text.len)
 end
 
-terra Layout:init(tr: &TextRenderer)
+terra Layout:init(r: &Renderer)
 	fill(self)
 	self.maxlen = maxint
 	self.base_dir = FRIBIDI_PAR_ON
-	self.tr = tr
-end
-
-terra Layout:free()
-	self.lines:free()
-	self.segs:free()
-	self.text:free()
-	self.spans:call'free'
-	self.spans:free()
+	self.r = r
 end
 
 newcast(Layout, niltype, Layout.empty)
@@ -254,11 +250,11 @@ newcast(Layout, niltype, Layout.empty)
 --glyph run type -------------------------------------------------------------
 
 struct GlyphInfo (gettersandsetters) {
-	glyph_index: uint;
+	glyph_index: int;
 	x: num; --glyph origin relative to glyph run origin
 	image_x_16_6: int16; --glyph image origin relative to glyph origin
 	image_y_16_6: int16;
-	cluster: uint16;
+	cluster: int;
 }
 fixpointfields(GlyphInfo)
 
@@ -272,6 +268,7 @@ struct GlyphRun (gettersandsetters) {
 	font_size_16_6  : uint16;            --2
 	rtl             : bool;              --1
 	--resulting glyphs and glyph metrics
+	refcount        : int;
 	glyphs          : arr(GlyphInfo);
 	--for positioning in horizontal flow
 	ascent          : num;
@@ -280,7 +277,7 @@ struct GlyphRun (gettersandsetters) {
 	wrap_advance_x  : num;
 	--cached surfaces for each subpixel-offset with painted glyph on them.
 	surfaces        : arr(&GraphicsSurface);
-	surfaces_memsize : uint32;
+	surfaces_memsize: int;
 	surface_x       : int16;
 	surface_y       : int16;
 	--for cursor positioning and hit testing (len = text_len+1)
@@ -322,14 +319,14 @@ end
 --glyph type -----------------------------------------------------------------
 
 struct Glyph (gettersandsetters) {
-	--cache key: must not have alignment holes!
-	font_id         : font_id_t;
-	font_size_16_6  : uint16;
-	glyph_index     : uint;
-	subpixel_offset_x_8_6 : uint8; -- 0..63 representing 0..1
+	--cache key: no alignment holes between fields!
+	font_id         : font_id_t;   --2
+	font_size_16_6  : uint16;      --2
+	glyph_index     : uint;        --4
+	subpixel_offset_x_8_6 : uint8; --1
 	--graphics surface
 	surface: &GraphicsSurface;
-	surface_x: int16; --bitmap coordinates relative to the glyph origin
+	surface_x: int16; --surface coordinates relative to the glyph origin
 	surface_y: int16;
 }
 fixpointfields(Glyph)
@@ -375,7 +372,7 @@ RangesFreelist = fixedfreelist(SegRange)
 GlyphRunCache = lrucache {key_t = GlyphRun}
 GlyphCache = lrucache {key_t = Glyph}
 
-struct TextRenderer (gettersandsetters) {
+struct Renderer (gettersandsetters) {
 
 	--rasterizer config
 	font_size_resolution: num;
@@ -413,20 +410,18 @@ struct TextRenderer (gettersandsetters) {
 	paint_glyph_num: int;
 }
 
---[[
 struct Selection {
-	segs: &Segs;
+	layout: &Layout;
 	offset: int;
 	len: int;
 	color: color;
 }
 
-terra Selection:init(segs: &Segs)
-	self.segs = segs
+terra Selection:init(layout: &Layout)
+	self.layout = layout
 	self.offset = 0
 	self.len = 0
 	self.color = default_color_constant_selection
 end
-]]
 
 return trlib
