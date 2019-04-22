@@ -139,6 +139,7 @@ fixpointfields(Span)
 
 terra Span:init()
 	fill(self)
+	self.font_id = -1
 	self.script = HB_SCRIPT_COMMON
 	self.dir = DIR_AUTO
 	self.line_spacing = 1
@@ -241,11 +242,9 @@ end
 terra Layout:init(r: &Renderer)
 	fill(self)
 	self.maxlen = maxint
-	self.base_dir = FRIBIDI_PAR_ON
+	self.base_dir = DIR_AUTO
 	self.r = r
 end
-
-newcast(Layout, niltype, Layout.empty)
 
 --glyph run type -------------------------------------------------------------
 

@@ -1,4 +1,4 @@
 
-local trlib = {__index = require'low'}
-trlib.trlib = trlib
-return setmetatable(trlib, trlib)
+local M = {__index = require'low'}
+M.trlib = M
+return setmetatable(M, M)
