@@ -21,7 +21,8 @@ terra Layout:clip(x: num, y: num, w: num, h: num)
 	x = x - self.x
 	y = y - self.y - self.baseline
 	var first_visible = max(self:line_at_y(y), 0)
-	var last_visible = min(lines.len-1, self:line_at_y(y + h - 1.0/256))
+	var last_visible = iif(h == inf, self.lines.len-1,
+		min(lines.len-1, self:line_at_y(y + h - 1.0/256)))
 	var first = false
 	for line_i = first_visible, last_visible + 1 do
 		var line = lines:at(line_i)

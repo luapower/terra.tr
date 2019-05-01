@@ -4,6 +4,7 @@
 if not ... then require'trlib_test'; return end
 
 setfenv(1, require'trlib_env')
+require'checkedalloc'
 
 --dependencies ---------------------------------------------------------------
 
@@ -28,7 +29,7 @@ linklibrary'freetype'
 linklibrary'xxhash'
 
 --replace the default hash function with faster xxhash.
-memhash = macro(function(size_t, k, h, len)
+low.bithash = macro(function(size_t, k, h, len)
 	local size_t = size_t:astype()
 	local T = k:getpointertype()
 	local len = len or 1
@@ -81,7 +82,7 @@ BREAK_PARA = 2
 --base types -----------------------------------------------------------------
 
 num = float
-font_id_t = uint16
+font_id = int16
 
 struct Renderer;
 struct Font;
@@ -120,7 +121,7 @@ SpanState = SpanState or struct {}
 
 struct Span (gettersandsetters) {
 	offset: int; --offset in the text, in codepoints.
-	font_id: font_id_t;
+	font_id: font_id;
 	font_size_16_6: uint16;
 	features: arr(hb_feature_t);
 	script: hb_script_t;
@@ -140,7 +141,6 @@ fixpointfields(Span)
 terra Span:init()
 	fill(self)
 	self.font_id = -1
-	self.script = HB_SCRIPT_COMMON
 	self.dir = DIR_AUTO
 	self.line_spacing = 1
 	self.hardline_spacing = 1
@@ -257,28 +257,34 @@ struct GlyphInfo (gettersandsetters) {
 }
 fixpointfields(GlyphInfo)
 
+struct GlyphImage {
+	surface: &GraphicsSurface;
+ 	x: int16; --image coordinates relative to the (first) glyph origin
+	y: int16;
+}
+GlyphImage.empty = `GlyphImage{surface = nil, x = 0, y = 0}
+
+terra GlyphImage.methods.free :: {&GlyphImage, &Renderer} -> {}
+
 struct GlyphRun (gettersandsetters) {
 	--cache key fields: no alignment holes between lang..rtl!
 	text            : arr(codepoint);
 	features        : arr(hb_feature_t);
 	lang            : hb_language_t;     --8
 	script          : hb_script_t;       --4
-	font_id         : font_id_t;         --2
+	font_id         : font_id;           --2
 	font_size_16_6  : uint16;            --2
 	rtl             : bool;              --1
 	--resulting glyphs and glyph metrics
-	refcount        : int;
 	glyphs          : arr(GlyphInfo);
 	--for positioning in horizontal flow
 	ascent          : num;
 	descent         : num;
 	advance_x       : num;
 	wrap_advance_x  : num;
-	--cached surfaces for each subpixel-offset with painted glyph on them.
-	surfaces        : arr(&GraphicsSurface);
-	surfaces_memsize: int;
-	surface_x       : int16;
-	surface_y       : int16;
+	--cached images for each subpixel-offset with painted glyph on them.
+	images          : arr{T = GlyphImage, context_t = &Renderer};
+	images_memsize  : int;
 	--for cursor positioning and hit testing (len = text_len+1)
 	cursor_offsets  : arr(uint16);
 	cursor_xs       : arr(num);
@@ -309,24 +315,24 @@ terra GlyphRun:__memsize()
 		  memsize(self.text)
 		+ memsize(self.features)
 		+ memsize(self.glyphs)
-		+ memsize(self.surfaces)
+		+ memsize(self.images)
 		+ memsize(self.cursor_offsets)
 		+ memsize(self.cursor_xs)
-		+ self.surfaces_memsize
+		+ self.images_memsize
 end
+
+terra GlyphRun.methods.free :: {&GlyphRun, &Renderer} -> {}
 
 --glyph type -----------------------------------------------------------------
 
 struct Glyph (gettersandsetters) {
 	--cache key: no alignment holes between fields!
-	font_id         : font_id_t;   --2
+	font_id         : font_id;     --2
 	font_size_16_6  : uint16;      --2
 	glyph_index     : uint;        --4
 	subpixel_offset_x_8_6 : uint8; --1
-	--graphics surface
-	surface: &GraphicsSurface;
-	surface_x: int16; --surface coordinates relative to the glyph origin
-	surface_y: int16;
+	--glyph image
+	image: GlyphImage;
 }
 fixpointfields(Glyph)
 
@@ -335,8 +341,7 @@ Glyph.empty = `Glyph {
 	font_size_16_6 = 0;
 	subpixel_offset_x_8_6 = 0;
 	glyph_index = 0;
-	surface = nil;
-	surface_x = 0; surface_y = 0;
+	image = [GlyphImage.empty];
 }
 
 local key_offset = offsetof(Glyph, 'font_id')
@@ -353,9 +358,11 @@ terra Glyph:__eq(other: &Glyph)
 end
 
 terra Glyph:__memsize()
-	return iif(self.surface ~= nil,
-		1024 + self.surface:stride() * self.surface:height(), 0)
+	return iif(self.image.surface ~= nil,
+		1024 + self.image.surface:stride() * self.image.surface:height(), 0)
 end
+
+terra Glyph.methods.free :: {&Glyph, &Renderer} -> {}
 
 --renderer type --------------------------------------------------------------
 
@@ -368,8 +375,19 @@ struct SegRange {
 
 RangesFreelist = fixedfreelist(SegRange)
 
-GlyphRunCache = lrucache {key_t = GlyphRun}
-GlyphCache = lrucache {key_t = Glyph}
+--terra GlyphRun.methods.__hash32  :: {&GlyphRun, uint32} -> {uint32}
+--terra GlyphRun.methods.__eq      :: {&GlyphRun, &GlyphRun}
+--terra GlyphRun.methods.__memsize :: {&GlyphRun} -> {intptr}
+--terra GlyphRun.methods.free      :: {&GlyphRun} -> {}
+
+GlyphRunCache = lrucache {key_t = GlyphRun, context_t = &Renderer}
+
+--terra Glyph.methods.__hash32  :: {&Glyph, uint32} -> {uint32}
+--terra Glyph.methods.__eq      :: {&Glyph, &Glyph}
+--terra Glyph.methods.__memsize :: {&Glyph} -> {intptr}
+--terra Glyph.methods.free      :: {&GlyphRun} -> {}
+
+GlyphCache = lrucache {key_t = Glyph, context_t = &Renderer}
 
 struct Renderer (gettersandsetters) {
 
@@ -380,7 +398,7 @@ struct Renderer (gettersandsetters) {
 
 	ft_lib: FT_Library;
 
-	fonts: arrayfreelist(Font, uint16);
+	fonts: arrayfreelist(Font, font_id);
 
 	glyphs: GlyphCache;
 	glyph_runs: GlyphRunCache;

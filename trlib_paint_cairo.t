@@ -45,7 +45,7 @@ terra Renderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 		cr:paint()
 		cr:rgb(0, 0, 0) --release source
 		cr:free()
-		glyph.surface = sr
+		glyph.image.surface = sr
 	else
 		var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h)
 		var cr = cairo_create(sr)
@@ -58,17 +58,10 @@ terra Renderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 			cr:rgb(0, 0, 0) --release source
 		end
 		cr:free()
-		glyph.surface = sr
+		glyph.image.surface = sr
 	end
 
 	sr0:free()
-end
-
-terra Renderer:unwrap_glyph(glyph: &Glyph)
-	if glyph.surface ~= nil then
-		glyph.surface:free()
-		glyph.surface = nil
-	end
 end
 
 --NOTE: clip_left and clip_right are relative to bitmap's left edge.

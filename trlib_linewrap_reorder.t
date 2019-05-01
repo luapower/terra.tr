@@ -78,6 +78,7 @@ local terra reorder_segs(seg: &Seg, ranges: &RangesFreelist)
 			range.bidi_level = seg.bidi_level
 		else
 			-- Allocate new range for seg and push into stack.
+			assert(ranges.items.len < ranges.items.capacity) --no relocation!
 			var r = ranges:alloc()
 			assert(r ~= nil)
 			r.left = seg

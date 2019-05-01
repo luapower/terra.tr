@@ -36,22 +36,36 @@ terra test()
 	probe'start'
 
 	layout:shape()
-	layout:wrap(sr:width())
-	layout:align(0, 0, sr:width(), sr:height(), ALIGN_LEFT, ALIGN_TOP)
-	layout:clip(0, 0, sr:width(), sr:height())
-	assert(layout.clip_valid)
-	probe'shape/wrap/align/clip'
 
-	r.paint_glyph_num = 0
-	var glyphs_per_frame = 11000
+	var t0: double
 	var wanted_fps = 60
-	var t0 = clock()
 	var times = 60
-	for i=0,times do
-		cr:rgb(0, 0, 0)
-		cr:paint()
-		layout:paint(cr)
+	var glyphs_per_frame = -1
+
+	for i = 500, 400, -1 do
+		print(i)
+
+		var w = sr:width()-i
+		var h = sr:height()
+
+		layout:wrap(w)
+		layout:align(i/2, 0, w, h, ALIGN_CENTER, ALIGN_TOP)
+		layout:clip(i/2, 0, w, h)
+		assert(layout.clip_valid)
+		probe'shape/wrap/align/clip'
+
+		r.paint_glyph_num = 0
+		t0 = clock()
+		for i=0,times do
+			cr:rgb(0, 0, 0)
+			cr:paint()
+			layout:paint(cr)
+			if glyphs_per_frame == -1 then glyphs_per_frame = r.paint_glyph_num end
+		end
+
+		break
 	end
+
 	var dt = clock() - t0
 	pfn('%.2fs\tpaint %d times, %d glyphs, %.2f%% of a frame @60fps',
 		dt, times, r.paint_glyph_num, 100 * glyphs_per_frame * wanted_fps * dt / r.paint_glyph_num)

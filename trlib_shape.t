@@ -185,7 +185,6 @@ terra Layout:shape()
 	var r = self.r
 	var segs = &self.segs
 	segs.len = 0
-	--remove cached values.
 	self.lines.len = 0
 	self._min_w = -inf
 	self._max_w =  inf
@@ -204,7 +203,7 @@ terra Layout:shape()
 	var do_detect_scripts = false
 	var do_detect_langs = false
 	for i, span in self.spans do
-		if span.script == HB_SCRIPT_COMMON then do_detect_scripts = true end
+		if span.script == HB_SCRIPT_INVALID then do_detect_scripts = true end
 		if span.lang == nil then do_detect_langs = true end
 		if do_detect_scripts and do_detect_langs then break end
 	end
@@ -216,7 +215,7 @@ terra Layout:shape()
 
 	--override scripts with user-provided values.
 	for span_index, span in self.spans do
-		if span.script ~= HB_SCRIPT_COMMON then
+		if span.script ~= HB_SCRIPT_INVALID then
 			for i = span.offset, self:eof(span_index) do
 				r.scripts.elements[i] = span.script
 			end

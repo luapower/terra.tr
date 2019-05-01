@@ -7,6 +7,12 @@ setfenv(1, require'trlib_types')
 require'trlib_font'
 require'trlib_rle'
 
+terra GlyphImage:free(r: &Renderer)
+	if self.surface == nil then return end
+	self.surface:free()
+	self.surface = nil
+end
+
 terra GlyphRun:free(r: &Renderer)
 	self.cursor_xs:free()
 	self.cursor_offsets:free()
@@ -14,7 +20,7 @@ terra GlyphRun:free(r: &Renderer)
 	self.text:free()
 	self.features:free()
 	self.glyphs:free()
-	self.surfaces:free()
+	self.images:free()
 	fill(self)
 end
 
@@ -66,8 +72,8 @@ terra GlyphRun:shape(r: &Renderer)
 	self.ascent = font.ascent
 	self.descent = font.descent
 
-	self.surfaces:init()
-	self.surfaces_memsize = 0
+	self.images:init(r)
+	self.images_memsize = 0
 
 	return true
 end
