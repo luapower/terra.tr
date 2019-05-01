@@ -375,18 +375,7 @@ struct SegRange {
 
 RangesFreelist = fixedfreelist(SegRange)
 
---terra GlyphRun.methods.__hash32  :: {&GlyphRun, uint32} -> {uint32}
---terra GlyphRun.methods.__eq      :: {&GlyphRun, &GlyphRun}
---terra GlyphRun.methods.__memsize :: {&GlyphRun} -> {intptr}
---terra GlyphRun.methods.free      :: {&GlyphRun} -> {}
-
 GlyphRunCache = lrucache {key_t = GlyphRun, context_t = &Renderer}
-
---terra Glyph.methods.__hash32  :: {&Glyph, uint32} -> {uint32}
---terra Glyph.methods.__eq      :: {&Glyph, &Glyph}
---terra Glyph.methods.__memsize :: {&Glyph} -> {intptr}
---terra Glyph.methods.free      :: {&GlyphRun} -> {}
-
 GlyphCache = lrucache {key_t = Glyph, context_t = &Renderer}
 
 struct Renderer (gettersandsetters) {
