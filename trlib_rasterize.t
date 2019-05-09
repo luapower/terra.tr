@@ -9,9 +9,7 @@ require'trlib_font'
 
 terra Font:load_glyph(font_size: num, glyph_index: uint)
 	self:setsize(font_size)
-	var ret = FT_Load_Glyph(self.ft_face, glyph_index, self.ft_load_flags)
-	--print('font - loaded glyph ', ret, self.ft_face)
-	if ret ~= 0 then
+	if FT_Load_Glyph(self.ft_face, glyph_index, self.ft_load_flags) ~= 0 then
 		return nil
 	end
 	var ft_glyph = self.ft_face.glyph
@@ -99,8 +97,6 @@ terra Renderer:rasterize_glyph(
 	glyph.glyph_index = glyph_index
 	glyph.font_size = font_size
 	glyph.subpixel_offset_x = ox
-
-	glyph:rasterize(self)
 
 	var glyph_id, pair = self.glyphs:get(glyph)
 	if pair == nil then

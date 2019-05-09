@@ -37,7 +37,7 @@ terra Renderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 		--scale raster glyphs which freetype cannot scale by itself.
 		var bw = font.size
 		var w1, h1 = box_fit(w, h, bw, bw)
-		var sr = cairo_image_surface_create(format, ceil(w1), ceil(h1))
+		var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, ceil(w1), ceil(h1))
 		var cr = cairo_create(sr)
 		cr:translate(glyph.subpixel_offset_x, 0)
 		cr:scale(w1 / w, h1 / h)

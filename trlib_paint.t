@@ -29,6 +29,7 @@ terra Renderer:paint_glyph_run(
 		self:paint_surface(cr, sr, sx, sy, clip, clip_left, clip_right)
 		inc(self.paint_glyph_num, j-i)
 	end
+
 end
 
 terra Layout:paint(cr: &GraphicsContext)
@@ -74,5 +75,4 @@ terra Layout:paint(cr: &GraphicsContext)
 			end
 		end
 	end
-
 end

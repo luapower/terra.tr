@@ -4,7 +4,6 @@
 if not ... then require'trlib_test'; return end
 
 setfenv(1, require'trlib_env')
-require'checkedalloc'
 
 --dependencies ---------------------------------------------------------------
 

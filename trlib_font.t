@@ -19,36 +19,53 @@ end
 
 terra Font:ref()
 	if self.refcount == 0 then
+
 		self.load(self, &self.file_data, &self.file_size)
-		if self.file_data == nil then
-			return false
-		end
-		if FT_New_Memory_Face(self.r.ft_lib, [&uint8](self.file_data),
+		if self.file_data == nil then goto fail end
+
+		if FT_New_Memory_Face(self.r.ft_lib,
+			[&uint8](self.file_data),
 			self.file_size, 0, &self.ft_face) ~= 0
 		then
-			self.unload(self, &self.file_data, &self.file_size)
-			return false
+			goto fail
 		end
+
 		self.hb_font = hb_ft_font_create_referenced(self.ft_face)
-		if self.hb_font == nil then
-			FT_Done_Face(self.ft_face); self.ft_face = nil
-			self.unload(self, &self.file_data, &self.file_size)
-			return false
-		end
+		if self.hb_font == nil then goto fail end
+
 		hb_ft_font_set_load_flags(self.hb_font, self.ft_load_flags)
 	end
+
 	inc(self.refcount)
-	return true
+	do return true end
+
+	::fail::
+	self:free()
+	return false
+end
+
+terra Font:free()
+	assert(self.refcount == 0)
+	if self.hb_font ~= nil then
+		hb_font_destroy(self.hb_font)
+		self.hb_font = nil
+	end
+	if self.ft_face ~= nil then
+		FT_Done_Face(self.ft_face)
+		self.ft_face = nil
+	end
+	if self.file_data ~= nil then
+		self.unload(self, &self.file_data, &self.file_size)
+		self.file_data = nil
+	end
 end
 
 terra Font:unref()
 	assert(self.refcount > 0)
-	if self.refcount == 1 then
-		hb_font_destroy(self.hb_font); self.hb_font = nil
-		FT_Done_Face(self.ft_face); self.ft_face = nil
-		self.unload(self, &self.file_data, &self.file_size)
-	end
 	dec(self.refcount)
+	if self.refcount == 0 then
+		self:free()
+	end
 end
 
 terra Font:setsize(size: num)
@@ -73,10 +90,10 @@ terra Font:setsize(size: num)
 
 	if found then
 		self.scale = size / fixed_size
-		FT_Select_Size(self.ft_face, size_index)
+		assert(FT_Select_Size(self.ft_face, size_index) == 0)
 	else
 		self.scale = 1
-		FT_Set_Pixel_Sizes(self.ft_face, fixed_size, 0)
+		assert(FT_Set_Pixel_Sizes(self.ft_face, fixed_size, 0) == 0)
 	end
 
 	var m = self.ft_face.size.metrics

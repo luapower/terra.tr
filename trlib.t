@@ -64,8 +64,7 @@ end
 
 terra Renderer:font(load: FontLoadFunc, unload: FontUnloadFunc)
 	assert(self.fonts.items.len <= 32000)
-	var font_id = self.fonts:alloc()
-	var font = self.fonts:at(font_id)
+	var font, font_id = self.fonts:alloc()
 	font:init(self, load, unload)
 	return font_id
 end
