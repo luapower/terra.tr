@@ -4,7 +4,8 @@
 
 --This is a port of github.com/luapower/tr which was written in Lua.
 --Leverages harfbuzz, freetype, fribidi and libunibreak.
---A module for blitting the rasterized text onto a Cairo surface is included.
+--Scaling and blitting a raster image onto another is out of the scope of
+--the library. A module for doing that with cairo is included separately.
 
 if not ... then require'trlib_test'; return end
 
@@ -74,4 +75,4 @@ terra Renderer:free_font(font_id: font_id)
 	self.fonts:release(font_id)
 end
 
-return trlib
+return _M

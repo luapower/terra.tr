@@ -116,8 +116,6 @@ struct Font {
 
 --layout type ----------------------------------------------------------------
 
-SpanState = SpanState or struct {}
-
 struct Span (gettersandsetters) {
 	offset: int; --offset in the text, in codepoints.
 	font_id: font_id;
@@ -133,20 +131,28 @@ struct Span (gettersandsetters) {
 	color: color;
 	opacity: double; --the opacity level in 0..1.
 	operator: int;   --blending operator.
-	_state: SpanState;
 }
 fixpointfields(Span)
 
+Span.empty = `Span {
+	offset = 0;
+	font_id = -1;
+	font_size_16_6 = 0;
+	features = [arr(hb_feature_t).empty];
+	script = 0;
+	lang = nil;
+	dir = DIR_AUTO;
+	line_spacing = 1.0;
+	hardline_spacing = 1.0;
+	paragraph_spacing = 2.0;
+	nowrap = false;
+	color = default_color_constant_text;
+	opacity = 1;
+	operator = 2; --CAIRO_OPERATOR_OVER
+}
+
 terra Span:init()
-	fill(self)
-	self.font_id = -1
-	self.dir = DIR_AUTO
-	self.line_spacing = 1
-	self.hardline_spacing = 1
-	self.paragraph_spacing = 2
-	self.color = default_color_constant_text
-	self.opacity = 1
-	self.operator = 2 --CAIRO_OPERATOR_OVER
+	@self = [Span.empty]
 end
 
 terra Span:free()
@@ -429,4 +435,4 @@ terra Selection:init(layout: &Layout)
 	self.color = default_color_constant_selection
 end
 
-return trlib
+return _M

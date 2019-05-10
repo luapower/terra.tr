@@ -1,7 +1,7 @@
 
 --Abstract run-length-encoding iterator for any indexable object.
 
-setfenv(1, require'trlib_types')
+setfenv(1, require'low')
 
 --NOTE: this could probably be achieved with a simple for loop and even less
 --conditionals in the loop if you are willing to have some code generated twice.
