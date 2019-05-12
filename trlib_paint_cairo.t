@@ -13,14 +13,6 @@ GraphicsSurface = cairo_surface_t
 GraphicsContext = cairo_t
 setfenv(1, require'trlib_types')
 
-terra box_fit(w: num, h: num, bw: num, bh: num)
-	if w / h > bw / bh then
-		return bw, bw * h / w
-	else
-		return bh * w / h, bh
-	end
-end
-
 terra Renderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 
 	var w = bmp.width
@@ -36,7 +28,7 @@ terra Renderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 	if font.scale ~= 1 then
 		--scale raster glyphs which freetype cannot scale by itself.
 		var bw = font.size
-		var w1, h1 = box_fit(w, h, bw, bw)
+		var w1, h1 = rect.fit(w, h, bw, bw)
 		var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, ceil(w1), ceil(h1))
 		var cr = cairo_create(sr)
 		cr:translate(glyph.subpixel_offset_x, 0)

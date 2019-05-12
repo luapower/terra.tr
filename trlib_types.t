@@ -14,7 +14,6 @@ require'fixedfreelist'
 require'lrucache'
 require'arrayfreelist'
 require'box2dlib'
-
 require_h'freetype_h'
 require_h'harfbuzz_h'
 require_h'fribidi_h'
@@ -28,7 +27,7 @@ linklibrary'freetype'
 linklibrary'xxhash'
 
 --replace the default hash function with faster xxhash.
-low.bithash = macro(function(size_t, k, h, len)
+bithash = macro(function(size_t, k, h, len)
 	local size_t = size_t:astype()
 	local T = k:getpointertype()
 	local len = len or 1
@@ -82,6 +81,7 @@ BREAK_PARA = 2
 
 num = float
 font_id = int16
+rect = rect(num)
 
 struct Renderer;
 struct Font;

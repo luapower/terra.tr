@@ -228,3 +228,12 @@ terra Layout:wrap(w: num)
 
 	return self
 end
+
+terra Layout:bbox()
+	var bx = self.x + self.min_x
+	var bw = self.max_ax
+	var by = self.y + self.baseline
+		- iif(self.lines.len > 0, self.lines:at(0).spaced_ascent, 0)
+	var bh = self.spaced_h
+	return bx, by, bw, bh
+end

@@ -139,11 +139,11 @@ terra Renderer:glyph_surfaces(gr: &GlyphRun, i: int, j: int, ax: num, ay: num)
 end
 
 terra Renderer:glyph_run_bbox(gr: &GlyphRun, ax: num, ay: num)
-	var bbox = box2d.bbox()
+	var bx: num, by: num, bw: num, bh: num = 0, 0, 0, 0
 	for sr, sx, sy in self:glyph_surfaces(gr, 0, gr.glyphs.len, ax, ay) do
-		bbox:add(sx, sy, sr:width(), sr:height())
+		bx, by, bw, bh = rect.bbox(bx, by, bw, bh, sx, sy, sr:width(), sr:height())
 	end
-	return bbox()
+	return bx, by, bw, bh
 end
 
 terra Renderer:rasterize_glyph_run(gr: &GlyphRun, ax: num, ay: num)
