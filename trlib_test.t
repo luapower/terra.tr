@@ -4,11 +4,11 @@ require'cairolib'
 require'utf8lib'
 setfenv(1, require'trlib')
 
-terra load_font(self: &Font, file_data: &&opaque, file_size: &int64)
+terra load_font(font_id: font_id, file_data: &&opaque, file_size: &int64)
 	@file_data, @file_size = readfile'media/fonts/OpenSans-Regular.ttf'
 end
 
-terra unload_font(self: &Font, file_data: &&opaque, file_size: &int64)
+terra unload_font(font_id: font_id, file_data: &&opaque, file_size: &int64)
 	free(@file_data)
 end
 
@@ -19,9 +19,9 @@ local s = glue.readfile'lorem_ipsum.txt'
 terra test()
 	var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1800, 900); defer sr:free()
 	var cr = sr:context(); defer cr:free()
-	var r: Renderer; r:init(); defer r:free()
+	var r: Renderer; r:init(load_font, unload_font); defer r:free()
 
-	var font_id = r:font(load_font, unload_font)
+	var font_id = r:font()
 
 	var layout: Layout; layout:init(&r)
 	utf8.decode.toarr([s], [#s], &layout.text, maxint, utf8.REPLACE, utf8.INVALID)

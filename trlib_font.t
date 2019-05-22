@@ -3,11 +3,9 @@ if not ... then require'trlib_test'; return end
 
 setfenv(1, require'trlib_types')
 
-terra Font:init(r: &Renderer, load: FontLoadFunc, unload: FontUnloadFunc)
+terra Font:init(r: &Renderer)
 	fill(self)
 	self.r = r
-	self.load = load
-	self.unload = unload
 	self.ft_load_flags =
 		   FT_LOAD_COLOR
 		or FT_LOAD_PEDANTIC
@@ -17,10 +15,14 @@ terra Font:init(r: &Renderer, load: FontLoadFunc, unload: FontUnloadFunc)
 	self.ft_render_flags = FT_RENDER_MODE_LIGHT
 end
 
+terra Font:get_id()
+	return self.r.fonts:index(self)
+end
+
 terra Font:ref()
 	if self.refcount == 0 then
 
-		self.load(self, &self.file_data, &self.file_size)
+		self.r.load_font(self.id, &self.file_data, &self.file_size)
 		if self.file_data == nil then goto fail end
 
 		if FT_New_Memory_Face(self.r.ft_lib,
@@ -55,7 +57,7 @@ terra Font:free()
 		self.ft_face = nil
 	end
 	if self.file_data ~= nil then
-		self.unload(self, &self.file_data, &self.file_size)
+		self.r.unload_font(self.id, &self.file_data, &self.file_size)
 		self.file_data = nil
 	end
 end

@@ -88,18 +88,11 @@ struct Font;
 
 --font type ------------------------------------------------------------------
 
-FontLoadFunc   = {&Font, &&opaque, &int64} -> {}
-FontUnloadFunc = {&Font, &&opaque, &int64} -> {}
-FontLoadFunc  .__typename_ffi = 'FontLoadFunc'
-FontUnloadFunc.__typename_ffi = 'FontUnloadFunc'
-
-struct Font {
+struct Font (gettersandsetters) {
 	r: &Renderer;
 	--loading and unloading
 	file_data: &opaque;
 	file_size: int64;
-	load: FontLoadFunc;
-	unload: FontUnloadFunc;
 	refcount: int;
 	--freetype & harfbuzz font objects
 	hb_font: &hb_font_t;
@@ -113,6 +106,9 @@ struct Font {
 	descent: num;
 	size_changed: {&Font} -> {};
 }
+
+FontLoadFunc   = {font_id, &&opaque, &int64} -> {}
+FontLoadFunc  .__typename_ffi = 'FontLoadFunc'
 
 --layout type ----------------------------------------------------------------
 
@@ -393,6 +389,8 @@ struct Renderer (gettersandsetters) {
 	ft_lib: FT_Library;
 
 	fonts: arrayfreelist(Font, font_id);
+	load_font: FontLoadFunc;
+	unload_font: FontLoadFunc;
 
 	glyphs: GlyphCache;
 	glyph_runs: GlyphRunCache;

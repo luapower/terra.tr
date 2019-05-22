@@ -18,13 +18,15 @@ require'trlib_clip'
 require'trlib_rasterize'
 require'trlib_paint'
 
-terra Renderer:init()
+terra Renderer:init(load_font: FontLoadFunc, unload_font: FontLoadFunc)
 	fill(self) --this initializes all arr() types.
 
 	self.font_size_resolution  = 1.0/8  --in pixels
 	self.subpixel_x_resolution = 1.0/16 --1/64 pixels is max with freetype
 	self.word_subpixel_x_resolution = 1.0/4
 	self.fonts:init()
+	self.load_font = load_font
+	self.unload_font = unload_font
 	self.glyphs:init(self)
 	self.glyphs.max_size = 1024 * 1024 * 20 --20 MB net (arbitrary default)
 	self.glyph_runs:init(self)
@@ -63,10 +65,10 @@ terra Layout:free()
 	self.spans:free()
 end
 
-terra Renderer:font(load: FontLoadFunc, unload: FontUnloadFunc)
+terra Renderer:font()
 	assert(self.fonts.items.len <= 32000)
 	var font, font_id = self.fonts:alloc()
-	font:init(self, load, unload)
+	font:init(self)
 	return font_id
 end
 

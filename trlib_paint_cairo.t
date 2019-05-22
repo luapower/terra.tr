@@ -69,9 +69,7 @@ terra Renderer:paint_surface(
 		cr:rectangle(x1, y, x2 - x1, sr:height())
 		cr:clip()
 	end
-	cr:source(sr, x, y)
-	cr:paint()
-	cr:rgb(0, 0, 0) --clear source
+	cr:mask(sr, x, y)
 	if clip then
 		cr:restore()
 	end
