@@ -142,7 +142,6 @@ Span.empty = `Span {
 	hardline_spacing = 1.0;
 	paragraph_spacing = 2.0;
 	nowrap = false;
-	color = default_color_constant_text;
 	opacity = 1;
 	operator = 2; --CAIRO_OPERATOR_OVER
 }
@@ -430,7 +429,6 @@ terra Selection:init(layout: &Layout)
 	self.layout = layout
 	self.offset = 0
 	self.len = 0
-	self.color = default_color_constant_selection
 end
 
 return _M

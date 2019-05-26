@@ -7,8 +7,6 @@ if not ... then require'trlib_test'; return end
 setfenv(1, require'trlib_env')
 require'cairolib'
 color = cairo_argb32_color_t
-default_color_constant_text      = `color {0x000000ff}
-default_color_constant_selection = `color {0x77770077}
 GraphicsSurface = cairo_surface_t
 GraphicsContext = cairo_t
 setfenv(1, require'trlib_types')

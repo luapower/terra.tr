@@ -1,6 +1,5 @@
 
 require'trlib_paint_cairo'
-require'cairolib'
 require'utf8lib'
 setfenv(1, require'trlib')
 
