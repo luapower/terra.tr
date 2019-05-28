@@ -253,7 +253,8 @@ terra Layout:shape()
 	self.base_dir = DIR_AUTO --bidi direction of the first paragraph of the text.
 
 	var span_index = 0
-	for offset, len in self:paragraphs() do
+	var paragraphs = self:paragraphs()
+	for offset, len in paragraphs do
 		var str = str + offset
 
 		span_index = self:span_index_at_offset(offset, span_index)
@@ -291,7 +292,8 @@ terra Layout:shape()
 	--We don't want that so we're passing it one more codepoint than needed.
 
 	r.linebreaks.len = len + 1
-	for offset, len, lang in r:lang_spans(len) do
+	var lang_spans = r:lang_spans(len)
+	for offset, len, lang in lang_spans do
 		set_linebreaks_utf32(str + offset, len + 1,
 			r:ub_lang(lang), r.linebreaks:at(offset))
 	end
@@ -304,12 +306,13 @@ terra Layout:shape()
 
 	var line_num = 0
 
-	for offset, len, span, level, script, lang in self:word_spans(
+	var word_spans = self:word_spans(
 		r.levels.elements,
 		r.scripts.elements,
 		r.langs.elements,
 		r.linebreaks.elements
-	) do
+	)
+	for offset, len, span, level, script, lang in word_spans do
 		var str = str+offset
 
 		--UBA codes: 0: required, 1: allowed, 2: not allowed.

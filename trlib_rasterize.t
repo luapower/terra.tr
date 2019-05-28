@@ -140,7 +140,8 @@ end
 
 terra Renderer:glyph_run_bbox(gr: &GlyphRun, ax: num, ay: num)
 	var bx: num, by: num, bw: num, bh: num = 0, 0, 0, 0
-	for sr, sx, sy in self:glyph_surfaces(gr, 0, gr.glyphs.len, ax, ay) do
+	var surfaces = self:glyph_surfaces(gr, 0, gr.glyphs.len, ax, ay)
+	for sr, sx, sy in surfaces do
 		bx, by, bw, bh = rect.bbox(bx, by, bw, bh, sx, sy, sr:width(), sr:height())
 	end
 	return bx, by, bw, bh
@@ -163,7 +164,8 @@ terra Renderer:rasterize_glyph_run(gr: &GlyphRun, ax: num, ay: num)
 		var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, bx2-bx1, by2-by1)
 		var srcr = sr:context()
 		srcr:translate(-bx1, -by1)
-		for gsr, gsx, gsy in self:glyph_surfaces(gr, 0, gr.glyphs.len, ax, ay) do
+		var surfaces = self:glyph_surfaces(gr, 0, gr.glyphs.len, ax, ay)
+		for gsr, gsx, gsy in surfaces do
 			self:paint_surface(srcr, gsr, gsx, gsy, false, 0, 0)
 		end
 		srcr:free()

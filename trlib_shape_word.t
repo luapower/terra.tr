@@ -56,7 +56,7 @@ terra GlyphRun:shape(r: &Renderer)
 	self.glyphs:init()
 	self.glyphs.len = len
 	var ax = [num](0)
-	for i=0,len do
+	for i = 0, len do
 		var g = self.glyphs:at(i)
 		g.glyph_index = info[i].codepoint
 		g.cluster = info[i].cluster
@@ -95,7 +95,7 @@ end)
 
 local terra count_graphemes(grapheme_breaks: &arr(int8), start: int, len: int)
 	var n = 0
-	for i=0,len do
+	for i = 0, len do
 		if grapheme_breaks(start+i) == 0 then
 			n = n + 1
 		end
@@ -228,7 +228,8 @@ terra GlyphRun:compute_cursors(r: &Renderer)
 		var cn: int --cluster len
 		var cx: num --cluster x
 		c = self.text.len
-		for i1, n1, c1 in self:cluster_runs() do
+		var cluster_runs = self:cluster_runs()
+		for i1, n1, c1 in cluster_runs do
 			cx = self:pos_x(i1)
 			if i ~= -1 then
 				self:_add_cursors(r, i, n, c, cn, cx, self.text.elements, self.text.len)
@@ -245,7 +246,8 @@ terra GlyphRun:compute_cursors(r: &Renderer)
 		var n: int --glyph count
 		var c: int = -1 --cluster
 		var cx: num --cluster x
-		for i1, n1, c1 in self:cluster_runs() do
+		var cluster_runs = self:cluster_runs()
+		for i1, n1, c1 in cluster_runs do
 			if c ~= -1 then
 				var cn = c1 - c
 				self:_add_cursors(r, i, n, c, cn, cx, self.text.elements, self.text.len)

@@ -20,7 +20,8 @@ terra Renderer:paint_glyph_run(
 		return
 	end
 
-	for sr, sx, sy in self:glyph_surfaces(gr, i, j, ax, ay) do
+	var surfaces = self:glyph_surfaces(gr, i, j, ax, ay)
+	for sr, sx, sy in surfaces do
 		if clip then
 			--make clip_left and clip_right relative to bitmap's left edge.
 			clip_left  = clip_left + ax - sx
