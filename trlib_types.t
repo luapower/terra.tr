@@ -86,6 +86,12 @@ rect = rect(num)
 struct Renderer;
 struct Font;
 
+--overridable constants ------------------------------------------------------
+
+DEFAULT_TEXT_COLOR      = DEFAULT_TEXT_COLOR      or `color {0xffffffff}
+DEFAULT_SELECTION_COLOR = DEFAULT_SELECTION_COLOR or `color {0x6666ff66}
+DEFAULT_TEXT_OPERATOR   = DEFAULT_TEXT_OPERATOR   or 2 --CAIRO_OPERATOR_OVER
+
 --font type ------------------------------------------------------------------
 
 struct Font (gettersandsetters) {
@@ -142,8 +148,9 @@ Span.empty = `Span {
 	hardline_spacing = 1.0;
 	paragraph_spacing = 2.0;
 	nowrap = false;
+	color = DEFAULT_TEXT_COLOR;
 	opacity = 1;
-	operator = 2; --CAIRO_OPERATOR_OVER
+	operator = DEFAULT_TEXT_OPERATOR;
 }
 
 terra Span:init()
@@ -429,6 +436,7 @@ terra Selection:init(layout: &Layout)
 	self.layout = layout
 	self.offset = 0
 	self.len = 0
+	self.color = DEFAULT_SELECTION_COLOR
 end
 
 return _M
