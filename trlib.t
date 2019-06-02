@@ -17,6 +17,8 @@ require'trlib_align'
 require'trlib_clip'
 require'trlib_rasterize'
 require'trlib_paint'
+require'trlib_hit_test'
+require'trlib_cursor'
 
 terra Renderer:init(load_font: FontLoadFunc, unload_font: FontLoadFunc)
 	fill(self) --this initializes all arr() types.

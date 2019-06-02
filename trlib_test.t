@@ -42,7 +42,6 @@ terra test()
 	var glyphs_per_frame = -1
 
 	for i = 500, 400, -1 do
-		print(i)
 
 		var w = sr:width()-i
 		var h = sr:height()
