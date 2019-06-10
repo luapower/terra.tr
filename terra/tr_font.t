@@ -1,7 +1,7 @@
 
-if not ... then require'trlib_test'; return end
+if not ... then require'terra/tr_test'; return end
 
-setfenv(1, require'trlib_types')
+setfenv(1, require'terra/tr_types')
 
 terra Font:init(r: &Renderer)
 	fill(self)

@@ -1,7 +1,7 @@
 
-if not ... then require'trlib_test'; return end
+if not ... then require'terra/tr_test'; return end
 
-setfenv(1, require'trlib_types')
+setfenv(1, require'terra/tr_types')
 
 --hit-test the lines array for a line number given a relative(!) y-coord.
 local terra cmp_ys(line1: &Line, line2: &Line)

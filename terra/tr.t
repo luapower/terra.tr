@@ -7,18 +7,18 @@
 --Scaling and blitting a raster image onto another is out of the scope of
 --the library. A module for doing that with cairo is included separately.
 
-if not ... then require'trlib_test'; return end
+if not ... then require'terra/tr_test'; return end
 
-setfenv(1, require'trlib_types')
+setfenv(1, require'terra/tr_types')
 
-require'trlib_shape'
-require'trlib_linewrap'
-require'trlib_align'
-require'trlib_clip'
-require'trlib_rasterize'
-require'trlib_paint'
-require'trlib_hit_test'
-require'trlib_cursor'
+require'terra/tr_shape'
+require'terra/tr_linewrap'
+require'terra/tr_align'
+require'terra/tr_clip'
+require'terra/tr_rasterize'
+require'terra/tr_paint'
+require'terra/tr_hit_test'
+require'terra/tr_cursor'
 
 terra Renderer:init(load_font: FontLoadFunc, unload_font: FontLoadFunc)
 	fill(self) --this initializes all arr() types.

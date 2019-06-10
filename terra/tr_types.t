@@ -1,19 +1,19 @@
 
 --Module table & environment with dependencies, enums and types.
 
-if not ... then require'trlib_test'; return end
+if not ... then require'terra/tr_test'; return end
 
-setfenv(1, require'trlib_env')
+setfenv(1, require'terra/tr_env')
 
 --dependencies ---------------------------------------------------------------
 
-assert(color, 'require the graphics adapter first, eg. trlib_paint_cairo')
+assert(color, 'require the graphics adapter first, eg. terra/tr_paint_cairo')
 
-require'phf'
-require'fixedfreelist'
-require'lrucache'
-require'arrayfreelist'
-require'box2dlib'
+require'terra/phf'
+require'terra/fixedfreelist'
+require'terra/lrucache'
+require'terra/arrayfreelist'
+require'terra/box2d'
 require_h'freetype_h'
 require_h'harfbuzz_h'
 require_h'fribidi_h'

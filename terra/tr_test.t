@@ -1,7 +1,7 @@
 
-require'trlib_paint_cairo'
-require'utf8lib'
-setfenv(1, require'trlib')
+require'terra/tr_paint_cairo'
+require'terra/utf8'
+setfenv(1, require'terra/tr')
 
 terra load_font(font_id: font_id, file_data: &&opaque, file_size: &int64)
 	@file_data, @file_size = readfile'media/fonts/OpenSans-Regular.ttf'
@@ -70,7 +70,7 @@ terra test()
 
 	layout:free()
 
-	sr:save_png'trlib_test.png'
+	sr:save_png'tr_test.png'
 
 	pfn('Glyph cache size     : %d', r.glyphs.size)
 	pfn('Glyph cache count    : %d', r.glyphs.count)

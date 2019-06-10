@@ -1,10 +1,10 @@
 
 --Mark segments as clipped.
 
-if not ... then require'trlib_test'; return end
+if not ... then require'terra/tr_test'; return end
 
-setfenv(1, require'trlib_types')
-require'trlib_hit_test'
+setfenv(1, require'terra/tr_types')
+require'terra/tr_hit_test'
 
 local overlap_seg = macro(function(ax1, ax2, bx1, bx2) --1D segments overlap test
 	return `not (ax2 < bx1 or bx2 < ax1)

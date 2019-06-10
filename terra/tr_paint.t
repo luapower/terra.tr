@@ -1,11 +1,11 @@
 
 --Painting rasterized glyph runs into a cairo surface.
 
-if not ... then require'trlib_test'; return end
+if not ... then require'terra/tr_test'; return end
 
-setfenv(1, require'trlib_types')
-require'trlib_clip'
-require'trlib_rasterize'
+setfenv(1, require'terra/tr_types')
+require'terra/tr_clip'
+require'terra/tr_rasterize'
 
 --NOTE: clip_left and clip_right are relative to glyph run's origin.
 terra Renderer:paint_glyph_run(

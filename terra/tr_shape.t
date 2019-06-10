@@ -1,14 +1,14 @@
 
 --Shaping rich text into an array of segments.
 
-if not ... then require'trlib_test'; return end
+if not ... then require'terra/tr_test'; return end
 
-setfenv(1, require'trlib_types')
-require'trlib_shape_word'
-require'trlib_rle'
+setfenv(1, require'terra/tr_types')
+require'terra/tr_shape_word'
+require'terra/tr_rle'
 
-local detect_scripts = require'trlib_shape_detect_script'
-local lang_for_script = require'trlib_shape_detect_lang'
+local detect_scripts  = require'terra/tr_shape_detect_script'
+local lang_for_script = require'terra/tr_shape_detect_lang'
 
 local PS = FRIBIDI_CHAR_PS --paragraph separator codepoint
 local LS = FRIBIDI_CHAR_LS --line separator codepoint

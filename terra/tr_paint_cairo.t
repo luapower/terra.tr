@@ -1,15 +1,15 @@
 
---Cairo graphics adapter for trlib.
+--Cairo graphics adapter for terra/tr.
 --Paints (and scales) rasterized glyph runs into a cairo surface.
 
-if not ... then require'trlib_test'; return end
+if not ... then require'terra/tr_test'; return end
 
-setfenv(1, require'trlib_env')
-require'cairolib'
+setfenv(1, require'terra/tr_env')
+require'terra/cairo'
 color = cairo_argb32_color_t
 GraphicsSurface = cairo_surface_t
 GraphicsContext = cairo_t
-setfenv(1, require'trlib_types')
+setfenv(1, require'terra/tr_types')
 
 terra Renderer:wrap_glyph(glyph: &Glyph, bmp: &FT_Bitmap)
 
