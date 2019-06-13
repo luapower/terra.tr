@@ -12,8 +12,8 @@ terra unload_font(font_id: font_id, file_data: &&opaque, file_size: &int64)
 end
 
 local s = 'Hello World\nNew Line'
---local s = glue.readfile'winapi_history.md'
-local s = glue.readfile'lorem_ipsum.txt'
+local s = assert(glue.readfile'../winapi_history.md')
+--local s = assert(glue.readfile'lorem_ipsum.txt')
 
 terra test()
 	var sr = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1800, 900); defer sr:free()
