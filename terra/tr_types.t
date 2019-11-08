@@ -10,7 +10,7 @@ setfenv(1, require'terra.low'.module'terra.tr_module')
 
 --dependencies ---------------------------------------------------------------
 
-assert(color, 'require the graphics adapter first, eg. tr_paint_cairo')
+assert(color, 'terra.tr_paint_cairo not loaded')
 
 low = require'terra.low'
 require'terra.phf'
