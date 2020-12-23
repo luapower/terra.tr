@@ -166,5 +166,5 @@ Shaping words separately breaks contextual ligatures
 	were loaded in a single run of the app but the font cache still holds
 	a few ref-counted fonts (eg. the fonts that show the main menu which
 	never goes away). now we have to restart the app. honestly if your app
-	could last that long, you're in business.
+	could last that long before crashing, you're in business.
 
